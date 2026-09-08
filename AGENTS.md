@@ -51,7 +51,9 @@ python3 build_timeline.py 01.욕망은오랜병 --fps 25 --gap 1.0
 - `build/tracklist.srt`: 곡 구간마다 "아티스트 - 곡명" (자막 트랙으로 불러와 '지금 재생 중'). `build/description.md`: 챕터 타임스탬프 + 크레딧 (m4a `description` 태그의 `Provided to YouTube by …`, 없으면 채널명, + 원본 URL). `build/covers/`: m4a 임베드 커버 추출, 없으면 black.png.
 - Resolve: File > Import > Timeline > Import AAF, EDL, XML… → fcpxml, File > Import > Subtitle → srt.
 - 곡 파일이 없으면 BuildError 로 멈춘다 (`--restore` 먼저).
-- **미검증 (2026-09-08)**: 이 맥에 Resolve 가 설치돼 있지 않아 실제 import 는 확인하지 못했다. 설치 후 확인할 것 — 음원 `lane="-1"` 이 A1 로 들어가는지, 정지 이미지 asset(duration 0s)이 곡 길이로 깔리는지, mp4 의 임베드 커버(png 스트림)를 Resolve 가 무시하는지, 클립 마커가 보이는지. 어긋나면 `write_fcpxml` 만 고치면 된다.
+- **Resolve 21.0.4(App Store 판)에서 import 확인 (2026-09-08)**: 타임라인 `욕망은 오랜 병` 01:30:48:01(빌드 합계와 일치), V1 19클립(정지 17 + mp4 2), A1 19클립. 음원 `lane="-1"` → A1, 정지 이미지 → 곡 길이, mp4 → 영상 클립, 마커 → 각 V1 클립의 클립 마커(Index 패널 `M` 행)로 들어온다.
+- Resolve 는 dotfiles `homebrew.masApps`(App Store 판, id 571213070)로 설치. 샌드박스라 첫 import 때 "Grant Access To Folder?" 가 뜨면 프로젝트 폴더를 선택한다(그 폴더가 Media Storage 위치로도 등록됨). Import 는 File > Import > Timeline 메뉴로만 가능하고 Import Media·컨텍스트 메뉴·Media Storage 드래그는 fcpxml 을 받지 않는다.
+- 알려진 시각 이슈: 추출 커버는 YouTube 썸네일(1280x720)이라 정방형 아트 양옆에 회색 띠가 있다 — 중앙 crop 옵션 또는 V1 배경 교체로 해결 예정.
 
 ## 실행 (반드시 로컬 터미널 — 프리미엄 쿠키가 Chrome 에 있음)
 
