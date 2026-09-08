@@ -94,30 +94,24 @@ assert ET.parse(res3.fcpxml).getroot().find("resources/format").get("frameDurati
 assert [t.frames for t in res3.tracks] == [round(bt.probe(dl / f)["duration"] * 25) for f in ("01.가수-노래.m4a", "02.둘-Second_Song.m4a", "03.Band-Live_Show.mp4")]
 print("  OK")
 
-print("== mix 모드 (--session/--audio): Reaper 세션의 아이템 위치·길이·트림이 곡 경계가 된다 ==")
-import re
+print("== mix 모드 (--audio [--cues]): GarageBand 믹스의 곡 경계(cues)가 V1 배치·마커·자막·챕터가 된다 ==")
 import build_daw as bd
-bd.build(proj)                                    # WAV·무음 영상·session.rpp
-sess = proj / "build" / "daw" / "session.rpp"
-chunks = sess.read_text(encoding="utf-8").split("<ITEM")
-def edit_item(nn, **kv):
-    k = next(i for i, c in enumerate(chunks) if f'NAME "{nn:02d} ' in c)
-    for key, val in kv.items():
-        chunks[k] = re.sub(rf"(\n\s*{key} )\S+", rf"\g<1>{val}", chunks[k], count=1)
-edit_item(2, POSITION="5.0", LENGTH="0.5")        # 2번 곡을 맨 뒤로
-edit_item(3, SOFFS="0.25", LENGTH="1.0")          # 영상 곡 앞 0.25초 트림
-sess.write_text("<ITEM".join(chunks), encoding="utf-8")
+daw = bd.build(proj)                              # WAV·무음 영상
+wav = {t.decision.index: t.wav for t in daw.tracks}
 mix = proj / "build" / "daw" / "mix.wav"
 ff("-f", "lavfi", "-i", "sine=frequency=440:duration=6.0", "-ar", "48000", "-c:a", "pcm_s16le", str(mix))
+cues_path = proj / "build" / "daw" / "cues.json"
+d1 = bt.probe(wav[1])["duration"]
+bd.save_cues(cues_path, [bd.Cue(1, "가수 - 노래", 0.0, d1, 0.0, wav[1]),
+                         bd.Cue(3, "Band - Live Show", d1 + 0.5, 1.0, 0.25, wav[3]),   # 영상 곡: 앞 0.25초 트림
+                         bd.Cue(2, "둘 - Second Song", 5.0, 0.5, 0.0, wav[2])])       # 2번 곡을 맨 뒤로
 try:
-    bt.build(proj, fps=30, session=sess); raise AssertionError("--audio 없이 통과")
+    bt.build(proj, fps=30, cues=cues_path); raise AssertionError("--audio 없이 통과")
 except bt.BuildError as e:
     assert "--audio" in str(e), e
-res = bt.build(proj, fps=30, session=sess, audio=mix)
-cues = bd.parse_rpp(sess)
-assert [c.index for c in cues] == [1, 3, 2], [c.index for c in cues]
+res = bt.build(proj, fps=30, audio=mix, cues=cues_path)
 assert [t.decision.index for t in res.tracks] == [1, 3, 2]
-assert [t.start for t in res.tracks] == [round(c.start * 30) for c in cues] and [t.frames for t in res.tracks] == [round(c.length * 30) for c in cues]
+assert [t.start for t in res.tracks] == [0, round((d1 + 0.5) * 30), 150] and [t.frames for t in res.tracks] == [round(d1 * 30), 30, 15], res.tracks
 fx = ET.parse(res.fcpxml).getroot(); assets = {a.get("id"): a for a in fx.findall("resources/asset")}
 seq = fx.find(".//sequence"); spine = list(seq.find("spine"))
 assert len(spine) == 1 and spine[0].tag == "asset-clip", [e.tag for e in spine]                 # 스파인 = mix 한 클립
@@ -130,12 +124,19 @@ assert [frames_of(e.get("offset")) for e in conn] == [t.start for t in res.track
 assert [frames_of(e.get("duration")) for e in conn] == [t.frames for t in res.tracks]
 v = assets[conn[1].get("ref")]                                                                   # 영상 곡: 무음 mp4, 트림 반영
 assert v.get("hasAudio") == "0" and src_path(v).parent.name == "video" and src_path(v).suffix == ".mp4", v.attrib
-assert conn[1].get("start") == "8/30s", conn[1].get("start")                                     # SOFFS 0.25s → 8프레임
+assert conn[1].get("start") == "8/30s", conn[1].get("start")                                     # 0.25s → 8프레임
 assert [e.find("marker").get("value") for e in conn] == ["01 가수 - 노래", "03 Band - Live Show", "02 둘 - Second Song"]
 srt = res.srt.read_text(encoding="utf-8").strip().split("\n\n")
 assert srt[2].split("\n")[1:] == [f"{bt.srt_ts(150, 30)} --> {bt.srt_ts(165, 30)}", "둘 - Second Song"], srt[2]
 desc = res.description.read_text(encoding="utf-8")
 assert desc.index("Band - Live Show") < desc.index("둘 - Second Song") and "00:05 둘 - Second Song" in desc, desc
+# --cues 없이 --audio 만 주면 align_cues 로 경계를 찾고 cues.json 을 새로 쓴다 (내용 검증은 test_build_daw 에서)
+cues_path.unlink()
+_align = bd.align_cues
+bd.align_cues = lambda m, tracks, ffmpeg=None: [bd.Cue(t.decision.index, t.label, i * 1.0, 0.9, 0.0, t.wav, 0.9) for i, t in enumerate(tracks)]
+res2 = bt.build(proj, fps=30, audio=mix)
+bd.align_cues = _align
+assert cues_path.exists() and [t.decision.index for t in res2.tracks] == [1, 2, 3] and [t.start for t in res2.tracks] == [0, 30, 60]
 print("  mix 모드 OK")
 
 print("== 파일 누락 ==")

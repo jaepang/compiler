@@ -34,13 +34,13 @@ python3 build_timeline.py 01.욕망은오랜병 --fps 25 --gap 1.0
 - 음원 곡은 V1 에 앨범아트 정지 이미지 + A1 에 음원, 영상 곡은 mp4 그대로. 1080p, `--fps` 24/25/30/60, `--gap` 초 단위 곡 간격
 - Resolve: File > Import > Timeline > Import AAF, EDL, XML… 로 fcpxml, File > Import > Subtitle 로 srt. 미디어는 downloads/ 절대경로로 연결되므로 `build/` 는 gitignore — 다른 머신은 `--restore` 뒤 다시 생성
 
-## Reaper 음원 선편집 → Resolve (`build_daw.py`, mix 모드)
+## GarageBand 음원 선편집 → Resolve (`build_daw.py`, mix 모드)
 
 ```bash
 python3 build_daw.py 01.욕망은오랜병
 ```
 
-- `build/daw/` 에 `audio/{nn}.{어간}.wav`(19곡 48kHz/24bit, 영상 곡은 오디오만), `video/`(영상 곡을 무음으로, 재인코딩 없음), `session.rpp`(Reaper 프로젝트: 트랙 1개에 일렬 배치 + 곡 시작 마커 + 10ms 페이드, 크로스페이드 없음) 생성
-- Reaper 로 `session.rpp` 열어 간격·트림·볼륨·페이드 편집 → 저장 → File > Render 로 `build/daw/mix.wav`(48kHz) 렌더
-- `python3 build_timeline.py 01.욕망은오랜병 --session build/daw/session.rpp --audio build/daw/mix.wav` — 저장된 세션의 아이템 위치·길이·트림을 곡 경계로 읽어(마커 내보내기 불필요) A1 = mix 한 클립, V1 = 커버/무음 영상, 마커·SRT·description 을 그 경계에 맞춰 만든다
-- Reaper 는 dotfiles cask `reaper` 로 설치(60일 평가판, 이후 $60 개인 라이선스). 테스트: `python3 test_build_daw.py`
+- `build/daw/audio/{nn}.{어간}.wav`(19곡 48kHz/24bit, 영상 곡은 오디오만) 와 `build/daw/video/`(영상 곡을 무음으로) 를 만들고 순서표를 출력한다. GarageBand 는 mp4 를 받지 않으니 WAV 를 순서대로 끌어다 놓는다.
+- GarageBand 에서 간격·트림·볼륨·페이드 편집 → Share > Export Song to Disk (WAV, 48kHz) → `build/daw/mix.wav`
+- `python3 build_timeline.py 01.욕망은오랜병 --audio build/daw/mix.wav` — GarageBand 는 마커를 내보내지 못하므로 믹스에서 곡 경계를 복원한다(원곡 중간 라우드니스 곡선을 믹스에서 상관으로 찾고 곡 사이 무음으로 다듬음. 순서 변경·볼륨 변경·앞 트림에 강함). 결과는 `build/daw/cues.json` 에 저장되고, 점수가 낮은 곡은 손으로 고쳐 `--cues build/daw/cues.json` 으로 넘길 수 있다. 미리 보기만 하려면 `python3 build_daw.py DIR --align build/daw/mix.wav`.
+- Resolve 템플릿은 A1 = mix 한 클립, V1 = 커버/무음 영상을 곡 경계에 맞춰(영상 트림 반영), 마커·SRT·챕터도 같은 경계. 테스트: `python3 test_build_daw.py`

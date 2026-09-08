@@ -1,5 +1,5 @@
-"""build_daw.py 오프라인 테스트 — ffmpeg 로 초소형 미디어를 만들어 WAV 디코드·무음 영상 분리·Reaper 세션(.rpp) 생성/파싱을 검증"""
-import json, re, shutil, subprocess, sys, tempfile
+"""build_daw.py 오프라인 테스트 — GarageBand 용 WAV/무음 영상 준비와, 내보낸 mix.wav 에서 곡 경계를 복원하는 align_cues 를 ffmpeg 합성 미디어로 검증"""
+import json, shutil, subprocess, sys, tempfile
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 import playlist_dl as pdl
@@ -12,12 +12,17 @@ def streams(p):
     out = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "stream=codec_type,codec_name,sample_rate", "-of", "json", str(p)], capture_output=True, text=True).stdout
     return [(s["codec_type"], s["codec_name"], s.get("sample_rate")) for s in json.loads(out)["streams"]]
 
-print("== 프로젝트 준비 ==")
+print("== 프로젝트 준비 (곡마다 다른 리듬의 진폭 변조 → 라우드니스 곡선이 서로 다름) ==")
 root = Path(tempfile.mkdtemp()); proj = root / "01.테스트"; dl = proj / "downloads"; dl.mkdir(parents=True)
-ff("-f", "lavfi", "-i", "sine=frequency=440:duration=2.5", "-c:a", "aac", str(dl / "01.가수-노래.m4a"))
-ff("-f", "lavfi", "-i", "sine=frequency=880:duration=1.0", "-c:a", "aac", str(dl / "02.둘-Second_Song.m4a"))
-ff("-f", "lavfi", "-i", "testsrc=size=320x240:rate=30:duration=1.5", "-f", "lavfi", "-i", "sine=frequency=660:duration=1.5",
-   "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", str(dl / "03.Band-Live_Show.mp4"))
+def song(path, dur, freq, mod, video=False):
+    src = f"aevalsrc=sin({freq}*2*PI*t)*(0.55+0.45*sin(2*PI*{mod}*t))*(0.6+0.4*sin(2*PI*{mod/3.7}*t)):s=48000:d={dur}"
+    if video:
+        ff("-f", "lavfi", "-i", f"testsrc=size=320x240:rate=30:duration={dur}", "-f", "lavfi", "-i", src, "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", str(path))
+    else:
+        ff("-f", "lavfi", "-i", src, "-c:a", "aac", "-b:a", "192k", str(path))
+song(dl / "01.가수-노래.m4a", 8.0, 440, 0.53)
+song(dl / "02.둘-Second_Song.m4a", 6.0, 660, 1.31)
+song(dl / "03.Band-Live_Show.mp4", 7.0, 330, 0.87, video=True)
 def dec(i, vid, title, name, ch, mode, artist):
     return pdl.Decision(index=i, id=vid, title=title, name=name, channel=ch, duration=2, mode=mode, reason="r",
                         url=f"https://www.youtube.com/watch?v={vid}", artist=artist)
@@ -26,55 +31,44 @@ items = [dec(1, "aaa", "노래", "가수-노래", "가수 - Topic", "audio", "�
          dec(3, "ccc", "Band - Live Show", "Band-Live Show", "BandVEVO", "video", "Band")]
 pdl.write_manifest(proj, "https://x/pl", "테스트 목록", items)
 
-print("== build_daw (gap 0) ==")
+print("== build (GarageBand 용 소스 준비) ==")
 res = bd.build(proj)
 daw = proj / "build" / "daw"
-assert res.session == daw / "session.rpp" and res.session.exists()
 wavs = [daw / "audio" / f for f in ("01.가수-노래.wav", "02.둘-Second_Song.wav", "03.Band-Live_Show.wav")]
-assert all(w.exists() for w in wavs), list((daw / "audio").iterdir())
-assert [t.wav for t in res.tracks] == wavs
-assert all(streams(w) == [("audio", "pcm_s24le", "48000")] for w in wavs), [streams(w) for w in wavs]        # 48k/24bit WAV
+assert all(w.exists() for w in wavs) and [t.wav for t in res.tracks] == wavs, list((daw / "audio").iterdir())
+assert all(streams(w) == [("audio", "pcm_s24le", "48000")] for w in wavs)
 vid = daw / "video" / "03.Band-Live_Show.mp4"
 assert res.tracks[2].video == vid and vid.exists() and res.tracks[0].video is None
-assert [s[0] for s in streams(vid)] == ["video"] and streams(vid)[0][1] == "h264", streams(vid)              # 무음 + 재인코딩 없음
-durs = [bt.probe(w)["duration"] for w in wavs]
-assert [t.length for t in res.tracks] == durs and [t.start for t in res.tracks] == [0.0, durs[0], durs[0] + durs[1]], res.tracks
+assert [s[0] for s in streams(vid)] == ["video"] and streams(vid)[0][1] == "h264"
 assert [t.label for t in res.tracks] == ["가수 - 노래", "둘 - Second Song", "Band - Live Show"]
-rpp = res.session.read_text(encoding="utf-8")
-assert rpp.startswith("<REAPER_PROJECT") and "SAMPLERATE 48000" in rpp and rpp.count("<TRACK") == 1 and rpp.count("<ITEM") == 3
-assert rpp.count("<SOURCE WAVE") == 3 and rpp.count("\nMARKER") + rpp.count("  MARKER") >= 3
-assert "<NOTES 0 2\n    |테스트 목록\n  >" in rpp and "\n  NOTES " not in rpp        # 노트는 청크 형식 (REAPER Project Load Warning 재현 방지)
-assert 'NAME "01 가수 - 노래"' in rpp and f'FILE "{wavs[0]}"' in rpp
-print("  산출물·배치 OK")
-
-print("== parse_rpp (생성 직후 → 라운드트립) ==")
-cues = bd.parse_rpp(res.session)
-assert [(c.index, c.label) for c in cues] == [(1, "가수 - 노래"), (2, "둘 - Second Song"), (3, "Band - Live Show")], cues
-assert [c.start for c in cues] == [0.0, durs[0], durs[0] + durs[1]] and [c.length for c in cues] == durs and all(c.offset == 0.0 for c in cues)
-assert [c.file for c in cues] == wavs
-print("  라운드트립 OK")
-
-print("== build_daw (gap 1.5) ==")
-res2 = bd.build(proj, gap=1.5)
-assert [t.start for t in res2.tracks] == [0.0, durs[0] + 1.5, durs[0] + durs[1] + 3.0]
+assert not (daw / "session.rpp").exists() and not hasattr(res, "session")          # Reaper 산출물 없음
+durs = [bt.probe(w)["duration"] for w in wavs]
+assert [t.length for t in res.tracks] == durs
 print("  OK")
 
-print("== 편집된 RPP 파싱 (Reaper 에서 이동·트림·순서 변경했다고 가정) ==")
-edited = daw / "edited.rpp"
-txt = res.session.read_text(encoding="utf-8")
-# 2번 곡 아이템 블록만 골라 위치 200.5, 길이 0.6, 앞 0.25 초 트림(SOFFS)
-chunks = txt.split("<ITEM")
-k = next(i for i, c in enumerate(chunks) if 'NAME "02 ' in c)
-c = chunks[k]
-c = re.sub(r"(\n\s*POSITION )\S+", r"\g<1>200.5", c, count=1)
-c = re.sub(r"(\n\s*LENGTH )\S+", r"\g<1>0.6", c, count=1)
-c = re.sub(r"(\n\s*SOFFS )\S+", r"\g<1>0.25", c, count=1)
-chunks[k] = c; txt = "<ITEM".join(chunks)
-edited.write_text(txt, encoding="utf-8")
-cues = bd.parse_rpp(edited)
-c2 = next(c for c in cues if c.index == 2)
-assert (c2.start, c2.length, c2.offset) == (200.5, 0.6, 0.25), c2
-assert [c.index for c in cues] == [1, 3, 2], [c.index for c in cues]            # 타임라인 순서(위치순)로 정렬
+print("== align_cues: GarageBand 에서 순서 바꾸고(3,1,2) 볼륨 낮추고 1번 앞 0.8초 잘라 내보낸 믹스 ==")
+mix = daw / "mix.wav"
+ff("-i", str(wavs[2]), "-i", str(wavs[0]), "-i", str(wavs[1]),
+   "-filter_complex",
+   "[0:a]volume=0.5[s3];[1:a]atrim=start=0.8,asetpts=PTS-STARTPTS[s1];[2:a]volume=0.7[s2];"
+   "aevalsrc=0:s=48000:d=1.0[g1];aevalsrc=0:s=48000:d=0.6[g2];"
+   "[s3][g1][s1][g2][s2]concat=n=5:v=0:a=1[out]", "-map", "[out]", "-c:a", "pcm_s16le", str(mix))
+cues = bd.align_cues(mix, res.tracks)
+assert [c.index for c in cues] == [3, 1, 2], [c.index for c in cues]
+exp_start = [0.0, durs[2] + 1.0, durs[2] + 1.0 + (durs[0] - 0.8) + 0.6]
+for c, e in zip(cues, exp_start):
+    assert abs(c.start - e) < 0.25, (c.index, c.start, e)
+c1 = next(c for c in cues if c.index == 1)
+assert abs(c1.offset - 0.8) < 0.25, c1                                             # 앞 트림이 소스 오프셋으로
+assert abs(c1.length - (durs[0] - 0.8)) < 0.35 and abs(cues[0].length - durs[2]) < 0.35, [(c.index, c.length) for c in cues]
+assert [c.label for c in cues] == ["Band - Live Show", "가수 - 노래", "둘 - Second Song"] and cues[1].file == wavs[0]
+assert all(c.score > 0.6 for c in cues), [c.score for c in cues]
+print("  OK")
+
+print("== cues.json 저장/로드 ==")
+cj = daw / "cues.json"; bd.save_cues(cj, cues); loaded = bd.load_cues(cj, res.tracks)
+assert [(c.index, round(c.start, 3), round(c.length, 3), round(c.offset, 3)) for c in loaded] == [(c.index, round(c.start, 3), round(c.length, 3), round(c.offset, 3)) for c in cues]
+assert loaded[1].file == wavs[0] and loaded[1].label == "가수 - 노래"
 print("  OK")
 
 shutil.rmtree(root, ignore_errors=True)

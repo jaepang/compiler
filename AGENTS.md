@@ -9,8 +9,8 @@ YouTube 재생목록을 yt-dlp 로 내려받아 **유튜브 영상 제작 소스
 compiler/
   playlist_dl.py        메인 스크립트 (yt-dlp CLI 를 subprocess 로 호출, pip yt_dlp 모듈 안 씀)
   test_offline.py       네트워크 없이 분류·파일명·yt-dlp 인자 검증 (python3 test_offline.py)
-  build_timeline.py     매니페스트 → DaVinci Resolve 용 build/ (timeline.fcpxml·tracklist.srt·description.md·covers/) 생성. --session/--audio 로 mix 모드
-  build_daw.py          매니페스트 → Reaper 세션 build/daw/ (WAV 디코드·무음 영상·session.rpp). 음원 선편집용, 저장된 .rpp 를 build_timeline 이 읽는다
+  build_timeline.py     매니페스트 → DaVinci Resolve 용 build/ (timeline.fcpxml·tracklist.srt·description.md·covers/) 생성. --audio [--cues] 로 mix 모드
+  build_daw.py          GarageBand 선편집용 소스(build/daw/audio/*.wav, video/*.mp4) 준비 + 내보낸 믹스에서 곡 경계 복원(align_cues → cues.json)
   test_build_daw.py     ffmpeg 합성 미디어로 build_daw 검증 (python3 test_build_daw.py)
   test_build_timeline.py  ffmpeg 로 초소형 미디어를 합성해 build_timeline 검증 (python3 test_build_timeline.py)
   fixture_meta.json     19곡 실제 메타데이터 (제목/채널/설명/태그/기대 파일명) — 테스트용
@@ -57,21 +57,22 @@ python3 build_timeline.py 01.욕망은오랜병 --fps 25 --gap 1.0
 - Resolve 는 dotfiles `homebrew.masApps`(App Store 판, id 571213070)로 설치. 샌드박스라 첫 import 때 "Grant Access To Folder?" 가 뜨면 프로젝트 폴더를 선택한다(그 폴더가 Media Storage 위치로도 등록됨). Import 는 File > Import > Timeline 메뉴로만 가능하고 Import Media·컨텍스트 메뉴·Media Storage 드래그는 fcpxml 을 받지 않는다.
 - 알려진 시각 이슈: 추출 커버는 YouTube 썸네일(1280x720)이라 정방형 아트 양옆에 회색 띠가 있다 — 중앙 crop 옵션 또는 V1 배경 교체로 해결 예정.
 
-## Reaper 선편집 왕복 (`build_daw.py` + `build_timeline.py --session/--audio`)
+## GarageBand 선편집 왕복 (`build_daw.py` + `build_timeline.py --audio [--cues]`)
 
-음원 편집은 DAW 에서 먼저 하고 싶다는 요청(2026-09-08). GarageBand 는 프로젝트 포맷이 비공개 바이너리라 생성 불가 → Reaper(.rpp 평문) 로 결정. 설치는 dotfiles `casks` 에 `reaper` 를 이 맥(AL02428916) 조건으로 선언.
+음원 편집은 DAW 에서 먼저 하고 싶다는 요청(2026-09-08). 처음엔 Reaper(.rpp 평문 생성·파싱)로 만들었지만 재광님이 GarageBand 로 결정해 Reaper 부분은 폐기(앱은 dotfiles cask 에서 빼고 rebuild 로 제거). GarageBand 는 프로젝트 생성도, 마커 내보내기도 안 되므로 **내보낸 믹스에서 곡 경계를 복원**하는 방식이다.
 
 ```bash
-python3 build_daw.py 01.욕망은오랜병                  # build/daw/{audio/*.wav, video/*.mp4, session.rpp}
-python3 build_timeline.py 01.욕망은오랜병 --session build/daw/session.rpp --audio build/daw/mix.wav
+python3 build_daw.py 01.욕망은오랜병                                   # build/daw/{audio/*.wav, video/*.mp4} + 순서표
+python3 build_daw.py 01.욕망은오랜병 --align build/daw/mix.wav          # 경계 복원 미리보기 → build/daw/cues.json
+python3 build_timeline.py 01.욕망은오랜병 --audio build/daw/mix.wav [--cues build/daw/cues.json]
 ```
 
-- `build_daw.py`: 19곡 전부 48kHz/24bit WAV 로 디코드(영상 곡은 오디오만, ~1.5GB), 영상 곡은 `-map 0:v:0 -an -c copy` 로 무음 mp4(임베드 커버 png 스트림 제외). `session.rpp` 는 트랙 1개, 아이템 이름 `nn 아티스트 - 곡명`, 곡 시작 MARKER, FADEIN/FADEOUT 10ms, AUTOXFADE 0. 소스 mtime 보다 새 산출물은 건너뛴다.
-- 재광님: Reaper 로 열어 편집 → 저장 → File > Render → `build/daw/mix.wav`. 마커 내보내기 같은 추가 단계 없음.
-- mix 모드 `build_timeline`: `build_daw.parse_rpp` 가 저장된 .rpp 의 ITEM(POSITION/LENGTH/SOFFS/NAME/FILE)을 읽어 위치순 Cue 로 — 곡 번호는 아이템 이름 접두어 `nn`. FCPXML 은 스파인 = mix.wav 한 `<asset-clip>`(A1), 곡마다 `lane="1"` 연결 클립(커버 `<video>` 또는 무음 mp4 `<asset-clip start=트림>`) + 마커. SRT·description 도 큐 기준. `--gap` 은 무시.
-- 순환 import 주의: `build_daw` 가 `build_timeline` 을 import 하므로 `build_timeline.build` 는 `parse_rpp` 를 함수 안에서 지연 import 한다.
-- **Reaper 7.79 에서 session.rpp 로드 확인 (2026-09-08)**: 트랙 1개, `[items] 19`, 마커·아이템 이름 정상. 프로젝트 노트는 `<NOTES … >` 청크여야 한다(평문 `NOTES` 줄은 "Project Load Warning"). 첫 실행 때 오디오 장치 선택 안내와 평가판 About 창이 뜬다.
-- **미검증**: mix 모드 FCPXML(스파인 = mix.wav, lane 1 영상)을 Resolve 가 A1/V1 로 받는지 — 재광님이 Reaper 에서 편집·렌더한 뒤 첫 import 때 확인. 어긋나면 `write_fcpxml` 의 mix 분기만 고치면 된다.
+- `build_daw.build`: 19곡 48kHz/24bit WAV(영상 곡은 오디오만, ~1.5GB), 영상 곡은 `-map 0:v:0 -an -c copy` 로 무음 mp4(임베드 커버 png 스트림 제외). 소스 mtime 보다 새 산출물은 건너뛴다.
+- `align_cues(mix, tracks)`: ffmpeg `ebur128` 의 100ms Momentary 라우드니스 곡선으로 원곡 중앙 15초를 믹스에서 피어슨 상관으로 찾는다(뭉치 평균으로 거친 탐색 → 근처 정밀 탐색이라 1.5시간 믹스도 수십 초). `silencedetect`(-45dB, 0.25s)로 시작·끝을 무음 경계에 맞추고, 앞 트림은 확정된 시작 지점의 믹스 곡선과 원곡 앞부분을 0.1s 씩 밀어 비교해 추정한다(ebur128 400ms 창이 채워지는 시작 0.5s 는 비교에서 제외 — 안 빼면 트림이 0 쪽으로 끌린다). 결과 `Cue(index, label, start, length, offset, file, score)`, 점수 < 0.6 이면 CLI 가 표시.
+- 곡 사이 간격이 없으면 무음 보정이 빠져 경계가 ±0.5s 정도 흔들릴 수 있다 → GarageBand 에서 곡 사이에 0.5초 이상 띄우는 것을 권장. 두 곡의 라우드니스 곡선이 아주 비슷하면(같은 곡 반복 등) 오인 가능 → cues.json 을 손으로 고쳐 `--cues`.
+- mix 모드 `build_timeline`: `--audio` 만 주면 `build_daw.build` → `align_cues` → `build/daw/cues.json` 저장, `--cues` 를 주면 그 파일을 쓴다. FCPXML 은 스파인 = mix 한 `<asset-clip>`(A1), 곡마다 `lane="1"` 연결 클립(커버 `<video>` 또는 무음 mp4 `<asset-clip start=트림>`) + 마커. SRT·description 도 큐 기준. `--gap` 은 무시.
+- 순환 import 주의: `build_daw` 가 `build_timeline` 을 import 하므로 `build_timeline.build` 는 `build_daw` 를 함수 안에서 지연 import 한다.
+- **미검증**: 실제 GarageBand 믹스로 `align_cues` 를 돌린 적은 아직 없다(합성 믹스 테스트만). mix 모드 FCPXML(스파인 오디오 + lane 1 영상)을 Resolve 가 A1/V1 로 받는지도 첫 import 때 확인. 어긋나면 `align_cues` 의 상수(TEMPLATE_SEC·SILENCE_DB·SNAP_SEC) 또는 `write_fcpxml` 의 mix 분기만 고치면 된다.
 
 ## 실행 (반드시 로컬 터미널 — 프리미엄 쿠키가 Chrome 에 있음)
 

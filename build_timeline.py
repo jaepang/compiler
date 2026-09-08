@@ -4,10 +4,11 @@ build_timeline.py — 매니페스트(classification.json)대로 DaVinci Resolve
 
   python3 build_timeline.py 01.욕망은오랜병                 # → 01.욕망은오랜병/build/
   python3 build_timeline.py 01.욕망은오랜병 --fps 25 --gap 1.0
-  python3 build_timeline.py 01.욕망은오랜병 --session build/daw/session.rpp --audio build/daw/mix.wav   # Reaper 선편집 결과 반영 (mix 모드)
+  python3 build_timeline.py 01.욕망은오랜병 --audio build/daw/mix.wav [--cues build/daw/cues.json]   # GarageBand 선편집 결과 반영 (mix 모드)
 
-mix 모드: build_daw.py 로 만든 Reaper 세션을 편집·저장하고 mix.wav 를 렌더한 뒤 넘기면, 세션의 아이템 위치·길이·트림이 곡 경계가 된다.
-  A1 = mix.wav 한 클립(스파인), V1 = 커버 정지 이미지/무음 영상(build/daw/video/)을 그 경계에 맞춰 연결(lane 1). 마커·SRT·description 도 같은 경계.
+mix 모드: GarageBand 로 내보낸 믹스를 --audio 로 주면 build_daw.align_cues 가 믹스에서 곡 경계(시작·길이·앞 트림)를 복원해
+  build/daw/cues.json 에 저장하고(--cues 로 손으로 고친 파일을 대신 줄 수 있다), A1 = mix 한 클립(스파인),
+  V1 = 커버 정지 이미지/무음 영상(build/daw/video/)을 그 경계에 맞춰 연결(lane 1). 마커·SRT·description 도 같은 경계.
 
 산출물 (build/ 는 절대경로가 들어가고 매니페스트에서 언제든 재생성되므로 gitignore):
   timeline.fcpxml   재생목록 순서대로 일렬 배치, 크로스페이드 없음(곡 사이 간격은 --gap 초).
@@ -55,7 +56,7 @@ class Track:
     start: int  # 타임라인 시작 프레임 (gap 포함)
     cover: Path | None  # 음원 곡의 배경 정지 이미지
     provider: str  # "Provided to YouTube by X" 의 X, 없으면 ""
-    src_start: int = 0  # 영상 곡의 소스 시작 프레임 (mix 모드에서 Reaper 트림 반영)
+    src_start: int = 0  # 영상 곡의 소스 시작 프레임 (mix 모드에서 앞 트림 반영)
 
 
 @dataclass
@@ -233,8 +234,8 @@ def locate_media(project_dir: Path, items: list[Decision]) -> dict[str, Path]:
 
 
 def build(project_dir: Path | str, fps: int = 30, gap: float = 0.0, ffprobe: str | None = None, ffmpeg: str | None = None,
-          session: Path | str | None = None, audio: Path | str | None = None) -> BuildResult:
-    """session(Reaper .rpp)+audio(mix.wav) 를 주면 mix 모드: 세션의 아이템 위치·길이·트림이 곡 경계, A1 은 mix 하나"""
+          audio: Path | str | None = None, cues: Path | str | None = None) -> BuildResult:
+    """audio(GarageBand 믹스) 를 주면 mix 모드: 믹스에서 복원한(또는 cues.json 의) 곡 경계로 배치, A1 은 mix 하나"""
     ffprobe_exe, ffmpeg_exe = shutil.which(ffprobe or "ffprobe"), shutil.which(ffmpeg or "ffmpeg")
     if not ffprobe_exe or not ffmpeg_exe:
         raise BuildError("ffprobe/ffmpeg 를 찾을 수 없습니다 (brew install ffmpeg, 또는 --ffprobe/--ffmpeg 로 경로 지정)")
@@ -262,19 +263,23 @@ def build(project_dir: Path | str, fps: int = 30, gap: float = 0.0, ffprobe: str
             f = video_path
         return Track(d, f, track_label(d), kind, frames, start, cover, provider_of(info["tags"]), src_start)
 
-    if session is not None:
+    if audio is not None or cues is not None:
         if audio is None:
-            raise BuildError("--session 에는 --audio (Reaper 에서 렌더한 mix.wav) 가 필요합니다.")
-        from build_daw import parse_rpp  # build_daw 가 이 모듈을 import 하므로 여기서 지연 import
+            raise BuildError("--cues 에는 --audio (GarageBand 로 내보낸 mix.wav) 가 필요합니다.")
+        import build_daw  # build_daw 가 이 모듈을 import 하므로 여기서 지연 import
 
-        by_index = {d.index: d for d in items}
+        daw = build_daw.build(project_dir, ffmpeg=ffmpeg_exe, ffprobe=ffprobe_exe)  # WAV·무음 영상 (이미 있으면 건너뜀)
         mix_path = Path(audio).absolute()
+        if cues is not None:
+            cue_list = build_daw.load_cues(Path(cues), daw.tracks)
+        else:
+            cue_list = build_daw.align_cues(mix_path, daw.tracks, ffmpeg_exe)
+            build_daw.save_cues(build_dir / "daw" / "cues.json", cue_list)
+        by_index = {d.index: d for d in items}
         mix_frames = max(1, round(probe(mix_path, ffprobe_exe)["duration"] * fps))
         video_dir = build_dir / "daw" / "video"
-        for c in parse_rpp(Path(session)):
-            d = by_index.get(c.index)
-            if d is None:
-                raise BuildError(f"세션의 아이템 '{c.index:02d} {c.label}' 에 해당하는 매니페스트 항목이 없습니다.")
+        for c in cue_list:
+            d = by_index[c.index]
             f = files[d.id]
             tracks.append(make_track(d, f, max(1, round(c.length * fps)), round(c.start * fps), round(c.offset * fps),
                                      video_dir / (safe_stem(d.index, d.name) + f.suffix)))
@@ -302,13 +307,13 @@ def main() -> int:
     p.add_argument("dir", help="프로젝트 폴더 (classification.json 과 downloads/ 가 있는 곳)")
     p.add_argument("--fps", type=int, default=30, choices=[24, 25, 30, 60], help="타임라인 프레임레이트 (기본 30)")
     p.add_argument("--gap", type=float, default=0.0, metavar="SEC", help="곡 사이 간격 초 (기본 0)")
-    p.add_argument("--session", metavar="RPP", help="build_daw.py 로 만들고 Reaper 에서 편집·저장한 세션 (mix 모드)")
-    p.add_argument("--audio", metavar="WAV", help="Reaper 에서 렌더한 mix.wav (mix 모드 필수)")
+    p.add_argument("--audio", metavar="WAV", help="GarageBand 로 내보낸 믹스 (mix 모드). 곡 경계는 build_daw.align_cues 로 복원 → build/daw/cues.json")
+    p.add_argument("--cues", metavar="JSON", help="align 결과를 손으로 고친 cues.json 을 대신 사용 (--audio 와 함께)")
     p.add_argument("--ffprobe", metavar="PATH")
     p.add_argument("--ffmpeg", metavar="PATH")
     args = p.parse_args()
     try:
-        res = build(args.dir, fps=args.fps, gap=args.gap, ffprobe=args.ffprobe, ffmpeg=args.ffmpeg, session=args.session, audio=args.audio)
+        res = build(args.dir, fps=args.fps, gap=args.gap, ffprobe=args.ffprobe, ffmpeg=args.ffmpeg, audio=args.audio, cues=args.cues)
     except BuildError as e:
         sys.exit(str(e))
     for t in res.tracks:
