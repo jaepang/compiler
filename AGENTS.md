@@ -12,7 +12,7 @@ compiler/
   fixture_meta.json     19곡 실제 메타데이터 (제목/채널/설명/태그/기대 파일명) — 테스트용
   README.md, requirements.txt(선택 의존성 pillow 만)
   01.욕망은오랜병/       재생목록 1개 = 폴더 1개, "{nn}.{재생목록이름}" 규칙
-    downloads/          {nn}.{영상명(한글 우선)}.{확장자}  — 음원·영상 구분 없이 한 폴더 (gitignore)
+    downloads/          {nn}.{아티스트}-{영상명}.{확장자} (공백은 _)  — 음원·영상 구분 없이 한 폴더 (gitignore)
     archive_audio.txt, archive_video.txt   yt-dlp --download-archive (모드별, 재실행 시 중복 방지. 머신 로컬 상태 — gitignore)
     classification.json                    영상별 분류·파일명 결과표 = 복원 매니페스트 {"playlist": {url,title}, "items": [...]} — 커밋 대상
 ```
@@ -66,13 +66,25 @@ python3 playlist_dl.py --cookies-from-browser chrome             # 다운로드
 5. 스토리보드(미리보기 썸네일 띠) 프레임 변화량 < 10 → 정지 이미지 → audio (pillow 있을 때만; 실측 정지 0.8 / Topic 앨범아트 6 / 실황 20~60)
 6. 기본값 video
 
-## 파일명 "한글 우선" 규칙 (`display_name`)
+## 파일명 규칙 `{nn}.{아티스트}-{곡명}.{확장자}` (`name_parts` / `safe_stem`)
 
+파일명에서 공백은 `_` (`01.사뮈-아침의_빛.m4a`, `12.Nothing_But_Thieves-Ban_All_the_Music_(Live_at_The_O2).mp4`). 매니페스트의 `name` 은 공백 그대로(`사뮈-아침의 빛`)이고 `artist` 도 따로 기록한다.
+
+**아티스트 (`artist_name`, 한글 우선·간략)**
+1. `ARTIST_OVERRIDES` (영상 ID → 이름) 최우선
+2. Topic 음원: 태그 2번째가 한글이고 앨범/트랙명이 아니면 그것 (`혁오 (HYUKOH)` → `혁오`, `넬(NELL)` → `넬`), 없으면 채널명에서 `- Topic` 제거 (`Muse`, `wave to earth`)
+3. 비-Topic: yt-dlp `artist` → 제목 `Artist - Song` 접두어 (`Nothing But Thieves`, `NELL`) → 업로더(`VEVO` 제거)
+4. 공통: 첫 아티스트만 (`,` `·` `feat.` `ft.` ` x ` 에서 끊음. `&` 는 밴드명에 흔해 안 끊음), 끝 괄호 보조표기 제거
+5. 제목 접두어가 그 아티스트면 곡명에서 뗀다 (`Muse - Stockholm Syndrome [Live …]` → `Muse-Stockholm Syndrome [Live …]`)
+
+**곡명 (`display_name`, 한글 우선)**
 1. `Disease (병)` 처럼 영문 (한글) → 괄호 안 한글 `병`
 2. 제목에 한글 있으면 그대로
 3. Topic 음원은 태그 배열 [아티스트, 아티스트(한글), 앨범, 앨범(한글), 트랙, 트랙(한글)] 에서 트랙 한글명 (Light Of Morning → 아침의 빛, Agog → 아고그, Stranger → 이방인)
 4. `X (X)` 중복 괄호 제거 (Loosing Control (Loosing Control) → Loosing Control)
 5. 없으면 원제. YouTube 의 hl=ko 현지화 제목은 19곡 모두 없었음.
+
+규칙이나 오버라이드를 고친 뒤에는 `python3 playlist_dl.py --rename <DIR> --cookies-from-browser chrome --dry-run` 으로 미리 보고 `--dry-run` 을 빼서 적용한다 — 항목별 메타데이터를 다시 조회해 downloads/ 의 `{nn}.*` 미디어 파일을 rename 하고 매니페스트를 갱신한다(재다운로드 없음). 쿠키 없이는 YouTube 봇 체크에 걸린다.
 
 ## 1번 재생목록 상태 (완료)
 

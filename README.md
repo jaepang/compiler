@@ -14,7 +14,8 @@ python3 playlist_dl.py --restore --cookies-from-browser chrome   # 다른 머신
 - yt-dlp 가 PATH 에 없으면 `--yt-dlp /opt/homebrew/bin/yt-dlp`
 - 포맷 기본값은 **YouTube 영상 제작·업로드 호환**: 음원은 AAC `.m4a`(프리미엄 256k), 영상은 H.264 + AAC `.mp4` (YouTube 권장 업로드 사양과 동일, Final Cut/Premiere/DaVinci/iMovie 에서 바로 열림)
   - 최고 품질(VP9/AV1 4K, opus)을 원하면 `--video-container mkv --audio-codec best`
-- 파일명: `{nn}.{영상명(한글 우선)}.{확장자}`  예) `01.아침의 빛.m4a`, `03.병.m4a`, `12.Nothing But Thieves - Ban All the Music (Live at The O2).mp4`
+- 파일명: `{nn}.{아티스트(한글 우선·간략)}-{영상명(한글 우선)}.{확장자}`, 공백은 `_`  예) `01.사뮈-아침의_빛.m4a`, `03.이적-병.m4a`, `12.Nothing_But_Thieves-Ban_All_the_Music_(Live_at_The_O2).mp4`
+- 파일명 규칙이나 `ARTIST_OVERRIDES` 를 고친 뒤에는 `python3 playlist_dl.py --rename 01.욕망은오랜병 --cookies-from-browser chrome --dry-run` 으로 미리 보고, `--dry-run` 을 빼면 downloads/ 파일 rename + classification.json 갱신 (재다운로드 없음)
 - dry-run 에서 음원이 `141  mp4a.40.2 256k` 로 나오면 프리미엄 포맷이 잡힌 것. `140 … 128k` 만 나오면 쿠키가 안 읽힌 상태(카탈로그 음원 기준)
 - 분류 규칙과 결과는 `playlist_dl.py` 상단 docstring 과 실행 후 생기는 `01.욕망은오랜병/classification.json` 참고
 - 선택: `pip install pillow` 하면 규칙 5(스토리보드로 정지 이미지 판별)까지 동작. 이 재생목록 19곡은 규칙 1~4 로 모두 결정되므로 없어도 됨

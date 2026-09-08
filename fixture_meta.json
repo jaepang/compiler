@@ -12,7 +12,8 @@
    "Light Of Morning",
    "아침의 빛"
   ],
-  "expected_name": "아침의 빛"
+  "expected_name": "아침의 빛",
+  "expected_artist": "사뮈"
  },
  {
   "id": "_G0qifw8oDg",
@@ -24,7 +25,8 @@
    "New Century Masterpiece Cinema",
    "Hollywood Movie Star"
   ],
-  "expected_name": "Hollywood Movie Star"
+  "expected_name": "Hollywood Movie Star",
+  "expected_artist": "Nerd Connection"
  },
  {
   "id": "O27GeOrRH9k",
@@ -39,7 +41,8 @@
    "Disease",
    "병"
   ],
-  "expected_name": "병"
+  "expected_name": "병",
+  "expected_artist": "이적"
  },
  {
   "id": "hLg0zMfUmVo",
@@ -52,7 +55,8 @@
    "POWER ANDRE 99",
    "Realize"
   ],
-  "expected_name": "Realize"
+  "expected_name": "Realize",
+  "expected_artist": "실리카겔"
  },
  {
   "id": "geuVSTwQEHY",
@@ -65,7 +69,8 @@
    "아고그 / 쿠션넘버원",
    "아고그"
   ],
-  "expected_name": "아고그"
+  "expected_name": "아고그",
+  "expected_artist": "데카당"
  },
  {
   "id": "rFZ_gTrYr78",
@@ -80,7 +85,8 @@
    "AAA LIVE",
    "Goodbye Seoul"
   ],
-  "expected_name": "Goodbye Seoul"
+  "expected_name": "Goodbye Seoul",
+  "expected_artist": "혁오"
  },
  {
   "id": "1HG_O7H1NbM",
@@ -92,7 +98,8 @@
    "Aren't You?",
    "The Lights Behind You"
   ],
-  "expected_name": "The Lights Behind You"
+  "expected_name": "The Lights Behind You",
+  "expected_artist": "SURL"
  },
  {
   "id": "yzgbi62XYtM",
@@ -105,7 +112,8 @@
    "0.1 flaws and all.",
    "nouvelle vague"
   ],
-  "expected_name": "nouvelle vague"
+  "expected_name": "nouvelle vague",
+  "expected_artist": "wave to earth"
  },
  {
   "id": "gb3MnRuDzz4",
@@ -120,7 +128,8 @@
    "Stranger",
    "이방인"
   ],
-  "expected_name": "이방인"
+  "expected_name": "이방인",
+  "expected_artist": "새소년"
  },
  {
   "id": "eqQBDh5Jb6Q",
@@ -134,7 +143,8 @@
    "Slip Away (5)",
    "Loosing Control"
   ],
-  "expected_name": "Loosing Control"
+  "expected_name": "Loosing Control",
+  "expected_artist": "넬"
  },
  {
   "id": "fsB1OzYy9uI",
@@ -146,7 +156,8 @@
    "Origin of Symmetry",
    "New Born"
   ],
-  "expected_name": "New Born"
+  "expected_name": "New Born",
+  "expected_artist": "Muse"
  },
  {
   "id": "oGQ6Ykwha1E",
@@ -165,7 +176,8 @@
    "Pop Rock",
    "Rock"
   ],
-  "expected_name": "Nothing But Thieves - Ban All the Music (Live at The O2)"
+  "expected_name": "Ban All the Music (Live at The O2)",
+  "expected_artist": "Nothing But Thieves"
  },
  {
   "id": "2mXNRsyTitA",
@@ -177,7 +189,8 @@
    "Meteora",
    "Faint"
   ],
-  "expected_name": "Faint"
+  "expected_name": "Faint",
+  "expected_artist": "Linkin Park"
  },
  {
   "id": "9wV9_je85DE",
@@ -189,7 +202,8 @@
    "Stockholm Syndrome",
    "Alternative"
   ],
-  "expected_name": "Muse - Stockholm Syndrome [Live From Wembley Stadium]"
+  "expected_name": "Stockholm Syndrome [Live From Wembley Stadium]",
+  "expected_artist": "Muse"
  },
  {
   "id": "8YcHut06638",
@@ -202,7 +216,8 @@
    "The High Tide Club",
    "Strawberry Moon"
   ],
-  "expected_name": "Strawberry Moon"
+  "expected_name": "Strawberry Moon",
+  "expected_artist": "더 폴스"
  },
  {
   "id": "sIJHYWDrJeU",
@@ -215,7 +230,8 @@
    "I Often Stammer and Forget the Way to Sleep",
    "Gills"
   ],
-  "expected_name": "Gills"
+  "expected_name": "Gills",
+  "expected_artist": "쏜애플"
  },
  {
   "id": "ZVgHPSyEIqk",
@@ -227,7 +243,8 @@
    "OK Computer OKNOTOK 1997 2017",
    "Let Down"
   ],
-  "expected_name": "Let Down (Remastered)"
+  "expected_name": "Let Down (Remastered)",
+  "expected_artist": "Radiohead"
  },
  {
   "id": "E8-P833ptPk",
@@ -250,7 +267,8 @@
    "넬스룸",
    "Shoegaze"
   ],
-  "expected_name": "NELL - Movie (Shoegaze Inst) [Unofficial]"
+  "expected_name": "Movie (Shoegaze Inst) [Unofficial]",
+  "expected_artist": "NELL"
  },
  {
   "id": "gzXi50Hbr_M",
@@ -263,6 +281,7 @@
    "through love",
    "New born"
   ],
-  "expected_name": "New born"
+  "expected_name": "New born",
+  "expected_artist": "혁오"
  }
 ]

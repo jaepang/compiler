@@ -21,7 +21,7 @@ playlist_dl.py — YouTube 재생목록을 '음원 / 영상'으로 자동 분류
           + 썸네일 / 메타데이터 임베드
 
 저장 위치 / 파일명:
-  <out>/downloads/{nn}.{영상명}.{확장자}      (음원·영상 구분 없이 한 폴더, nn = 재생목록 순번)
+  <out>/downloads/{nn}.{아티스트}-{영상명}.{확장자}   (음원·영상 구분 없이 한 폴더, nn = 재생목록 순번, 공백은 '_')
   <out>/archive_audio.txt, archive_video.txt  (재실행 시 중복 방지, 모드별. 머신 로컬 상태 — git 에 올리지 않음)
   <out>/classification.json                   (분류 결과표 = 복원 매니페스트. 재생목록 URL/제목 + 영상별 index/name/mode/url.
                                                git 에 올리는 유일한 산출물이며 --restore 가 이것만 보고 내려받는다)
@@ -30,6 +30,9 @@ playlist_dl.py — YouTube 재생목록을 '음원 / 영상'으로 자동 분류
     - Topic 음원이면 태그의 한글 트랙명 (Light Of Morning → 아침의 빛)
     - "Loosing Control (Loosing Control)" 같은 중복 괄호는 제거
     - 한글 정보가 없으면 원제 그대로
+  아티스트는 간략하게, 한글 우선: Topic 태그의 한글 표기(혁오 (HYUKOH) → 혁오) → Topic 채널명 → 제목의 "Artist - " 접두어
+    → 업로더(VEVO 제거). 여러 명이면 첫 아티스트만. 제목 접두어가 그 아티스트면 영상명에서 떼어 중복을 막는다
+    (Muse - Stockholm Syndrome [Live …] → Muse-Stockholm Syndrome [Live …]). 틀리면 ARTIST_OVERRIDES 에 적는다.
 
 사용 예 (compiler 폴더에서 실행):
   python3 playlist_dl.py --cookies-from-browser chrome      # → ./01.욕망은오랜병/downloads/
@@ -37,6 +40,7 @@ playlist_dl.py — YouTube 재생목록을 '음원 / 영상'으로 자동 분류
   python3 playlist_dl.py --only 17WFr1WGtrA                 # 특정 영상만
   python3 playlist_dl.py --restore                          # 다른 머신에서: 프로젝트를 골라(TUI) 매니페스트대로 그대로 다시 받기
   python3 playlist_dl.py --restore 01.욕망은오랜병           # 특정 프로젝트만. 재생목록 조회·분류 없이 기록된 파일명·모드 그대로
+  python3 playlist_dl.py --rename 01.욕망은오랜병 --dry-run  # 파일명 규칙이 바뀐 뒤: 기존 파일·매니페스트를 새 규칙으로 (미리보기)
   python3 playlist_dl.py --video-container mkv --audio-codec best   # 호환성 대신 최고 품질(VP9/AV1, opus) 우선
   python3 playlist_dl.py --yt-dlp /opt/homebrew/bin/yt-dlp  # PATH 에 없을 때 실행 파일 지정
 
@@ -74,6 +78,9 @@ MANUAL_OVERRIDES: dict[str, str] = {
     "E8-P833ptPk": "audio",  # NELL - Movie (Shoegaze Inst) [Unofficial] (빈도시)     — 정지 이미지 + 팬메이드 인스트
 }
 
+# 수동 아티스트 오버라이드 (영상 ID → 파일명에 쓸 아티스트). 자동 추출(한글 태그 → Topic 채널명 → 제목 접두어 → 업로더)이 틀린 영상만.
+ARTIST_OVERRIDES: dict[str, str] = {}
+
 # 제목에 이런 단어가 있으면 '영상'으로 본다 (라이브·MV·퍼포먼스 계열)
 VIDEO_HINTS = re.compile(
     r"\b(live|concert|m/v|mv|music\s*video|official\s*(music\s*)?video|performance|perf\.?|"
@@ -108,6 +115,7 @@ class Decision:
     mode: str  # "audio" | "video"
     reason: str
     url: str
+    artist: str = ""  # 파일명에 쓴 아티스트(한글 우선·간략). 구버전 매니페스트에는 없어 기본 ""
 
 
 def is_auto_generated_music(info: dict) -> bool:
@@ -205,6 +213,70 @@ def _norm(s: str) -> str:
     return re.sub(r"[\s\W_]+", "", s or "").casefold()
 
 
+# 여러 아티스트 표기에서 첫 아티스트만: "A, B" / "A feat. B" / "A ft. B" / "A · B" / "A x B"  ('&' 는 밴드명에 흔해 자르지 않는다)
+_ARTIST_SPLIT = re.compile(r"\s*(?:,|·|\bfeat\.?|\bft\.?|\bfeaturing\b|\bx\b)\s*", re.IGNORECASE)
+# "혁오 (HYUKOH)" / "넬(NELL)" 처럼 끝에 붙은 괄호 보조표기
+_TRAILING_PAREN = re.compile(r"\s*[(\[][^()\[\]]*[)\]]\s*$")
+# "Artist - Song" — 대시 양옆에 공백이 있어야 한다 (Hip-Hop 같은 하이픈 단어는 제외)
+_TITLE_PREFIX = re.compile(r"^\s*(?P<artist>[^-–—]+?)\s+[-–—]\s+(?P<song>.+?)\s*$")
+_UPLOADER_SUFFIX = re.compile(r"\s*(?:VEVO|Official)$", re.IGNORECASE)
+
+
+def tidy_artist(s: str) -> str:
+    """간략화: 첫 아티스트만, 끝 괄호 보조표기 제거"""
+    s = _ARTIST_SPLIT.split(s.strip(), maxsplit=1)[0]
+    return _TRAILING_PAREN.sub("", s).strip()
+
+
+def split_title(title: str | None) -> tuple[str, str] | None:
+    m = _TITLE_PREFIX.match(title or "")
+    return (m["artist"], m["song"]) if m else None
+
+
+def topic_channel_artist(info: dict) -> str:
+    for key in ("uploader", "channel"):
+        v = str(info.get(key) or "").strip()
+        if v.endswith("- Topic"):
+            return v[: -len("- Topic")].strip()
+    return ""
+
+
+def yt_artist(info: dict) -> str:
+    """yt-dlp 가 파싱한 artist(s) 필드"""
+    for a in info.get("artists") or [info.get("artist")]:
+        if a and str(a).strip():
+            return str(a).strip()
+    return ""
+
+
+def korean_artist_tag(info: dict) -> str:
+    """Topic 음원 태그 [아티스트, 아티스트(한글)?, 앨범, …] 의 2번째가 한글이면 그것. 앨범·트랙명과 같으면 아티스트가 아니다"""
+    tags = [t.strip() for t in (info.get("tags") or []) if t and t.strip()]
+    if len(tags) < 2 or not HANGUL.search(tags[1]):
+        return ""
+    taken = {_norm(info.get("album") or ""), _norm(info.get("track") or ""), _norm(info.get("title") or "")} - {""}
+    cand = tags[1]
+    if _norm(cand) in taken or _norm(tidy_artist(cand)) in taken:
+        return ""
+    return cand
+
+
+def raw_artist(info: dict) -> str:
+    """간략화 전 아티스트 표기. 오버라이드 → (Topic) 한글 태그 → Topic 채널명 → yt-dlp artist → 제목 접두어 → 업로더(VEVO 제거)"""
+    vid = info.get("id", "")
+    if vid in ARTIST_OVERRIDES:
+        return ARTIST_OVERRIDES[vid]
+    if is_auto_generated_music(info):
+        return korean_artist_tag(info) or topic_channel_artist(info) or yt_artist(info)
+    pre = split_title(info.get("title"))
+    uploader = str(info.get("uploader") or info.get("channel") or "")
+    return yt_artist(info) or (pre[0] if pre else "") or _UPLOADER_SUFFIX.sub("", uploader).strip()
+
+
+def artist_name(info: dict) -> str:
+    return tidy_artist(raw_artist(info))
+
+
 def display_name(info: dict) -> str:
     """파일명에 쓸 영상명. 한글 제목이 있으면 한글을 우선한다."""
     title = (info.get("title") or "").strip()
@@ -238,10 +310,35 @@ def display_name(info: dict) -> str:
     return title or info.get("id", "untitled")
 
 
+def name_parts(info: dict) -> tuple[str, str]:
+    """(아티스트, 곡명). 제목의 'Artist - ' 접두어가 그 아티스트를 가리키면 곡명에서 떼어 중복을 막는다"""
+    artist = artist_name(info)
+    pre = split_title(info.get("title"))
+    if pre and artist:
+        aliases = {_norm(x) for x in (raw_artist(info), topic_channel_artist(info), yt_artist(info), artist) if x}
+        if _norm(pre[0]) in aliases or _norm(tidy_artist(pre[0])) in aliases:
+            return artist, display_name({**info, "title": pre[1]})
+    return artist, display_name(info)
+
+
+def join_stem(artist: str, song: str) -> str:
+    return f"{artist}-{song}" if artist else song
+
+
+def file_stem(info: dict) -> str:
+    """파일명 어간 '{아티스트}-{곡명}' (아티스트를 못 찾으면 곡명만)"""
+    return join_stem(*name_parts(info))
+
+
+def safe_stem(index: int, name: str) -> str:
+    """'{nn}.{어간}' 을 파일 시스템에 안전하게: 금지 문자는 전각으로, 공백은 '_' 로"""
+    safe = re.sub(r"\s+", "_", name.translate(_UNSAFE).strip()).rstrip(".") or "untitled"
+    return f"{index:02d}.{safe}"
+
+
 def outtmpl_for(out_dir: Path, index: int, name: str) -> str:
-    """{nn}.{영상명}.{확장자} — 파일 시스템에 안전하게, '%' 는 yt-dlp 템플릿 이스케이프"""
-    safe = name.translate(_UNSAFE).strip().rstrip(".").replace("%", "%%") or "untitled"
-    return str(out_dir / f"{index:02d}.{safe}.%(ext)s")
+    """yt-dlp -o 템플릿 '{nn}.{어간}.%(ext)s'. '%' 는 템플릿 이스케이프"""
+    return str(out_dir / (safe_stem(index, name).replace("%", "%%") + ".%(ext)s"))
 
 
 # --------------------------------------------------------------------------- yt-dlp CLI
@@ -544,13 +641,18 @@ def restore(ytdlp: str, args, base_dir: Path) -> tuple[list[Decision], list[str]
     return done, failed
 
 
+def manifest_dirs(names: list[str]) -> list[Path]:
+    targets = [Path(d).expanduser() for d in names]
+    missing = [str(t) for t in targets if not (t / MANIFEST_NAME).exists()]
+    if missing:
+        sys.exit(f"매니페스트({MANIFEST_NAME})가 없는 폴더: {', '.join(missing)}")
+    return targets
+
+
 def restore_main(ytdlp: str, args) -> int:
     """--restore [DIR ...]: DIR 이 없으면 현재 폴더의 프로젝트를 TUI 로 골라서"""
     if args.restore:
-        targets = [Path(d).expanduser() for d in args.restore]
-        missing = [str(t) for t in targets if not (t / MANIFEST_NAME).exists()]
-        if missing:
-            sys.exit(f"매니페스트({MANIFEST_NAME})가 없는 폴더: {', '.join(missing)}")
+        targets = manifest_dirs(args.restore)
     else:
         projects = discover_projects(Path.cwd())
         if not projects:
@@ -572,6 +674,68 @@ def restore_main(ytdlp: str, args) -> int:
     return 1 if all_failed else 0
 
 
+# --------------------------------------------------------------------------- 이름 갱신 (--rename)
+
+MEDIA_EXTS = {".m4a", ".mp4", ".mkv", ".webm", ".opus"}  # .gitignore 의 미디어 목록과 같다
+
+
+def rename_project(ytdlp: str, args, base_dir: Path) -> tuple[list[Decision], list[str]]:
+    """매니페스트 항목의 메타데이터를 다시 조회해 현재 규칙의 이름을 계산하고, 바뀐 항목은 downloads/{nn}.* 미디어 파일을
+    rename 하고 매니페스트를 갱신한다 (재다운로드 없음). --dry-run 이면 출력만. (이름 바뀐 항목, 조회 실패 ID) 반환."""
+    meta, items = read_manifest(base_dir)
+    only = set(args.only) if args.only else None
+    dl = base_dir / "downloads"
+    print(f"▶ 이름 갱신: {base_dir}  ('{meta.get('title') or '?'}', {len(items)}개){'  [dry-run]' if args.dry_run else ''}")
+
+    changed: list[Decision] = []
+    failed: list[str] = []
+    for d in items:
+        if only is not None and d.id not in only:
+            continue
+        try:
+            info = fetch_info(ytdlp, d.url, args)
+        except YtDlpError as e:
+            print(f"[{d.index:02d}] {d.name}  ✗ 메타데이터 조회 실패: {e}")
+            failed.append(d.id)
+            continue
+        artist, song = name_parts(info)
+        new_name = join_stem(artist, song)
+        if new_name == d.name and artist == d.artist:
+            continue
+        print(f"[{d.index:02d}] {d.name}  →  {new_name}")
+        new_stem = safe_stem(d.index, new_name)
+        files = sorted(f for f in dl.glob(f"{d.index:02d}.*") if f.suffix.lower() in MEDIA_EXTS) if dl.is_dir() else []
+        if not files:
+            print("       (파일 없음 — 매니페스트만 갱신)")
+        for f in files:
+            target = f.with_name(new_stem + f.suffix)
+            if target == f:
+                print(f"       = {f.name} (이미 새 이름)")
+            elif target.exists():
+                print(f"       ! {target.name} 이 이미 있어 {f.name} 은 그대로 둠")
+            else:
+                print(f"       {f.name}  →  {target.name}")
+                if not args.dry_run:
+                    f.rename(target)
+        d.artist, d.name = artist, new_name
+        changed.append(d)
+
+    if changed and not args.dry_run:
+        write_manifest(base_dir, meta.get("url") or "", meta.get("title") or "", items)
+    return changed, failed
+
+
+def rename_main(ytdlp: str, args) -> int:
+    all_failed: list[str] = []
+    for t in manifest_dirs(args.rename):
+        changed, failed = rename_project(ytdlp, args, t)
+        all_failed += failed
+        print(f"  이름 바뀐 항목 {len(changed)}개, 조회 실패 {len(failed)}개{'  (dry-run: 실제 변경 없음)' if args.dry_run else ''}\n")
+    if all_failed:
+        print("실패한 ID:", ", ".join(all_failed))
+    return 1 if all_failed else 0
+
+
 # --------------------------------------------------------------------------- 메인
 
 
@@ -583,6 +747,8 @@ def main() -> int:
     p.add_argument("--dry-run", action="store_true", help="다운로드 없이 분류 결과·파일명·선택 포맷만 출력")
     p.add_argument("--restore", nargs="*", metavar="DIR",
                    help=f"{MANIFEST_NAME} 에 기록된 대로 다시 내려받기 (다른 머신용). DIR 생략 시 현재 폴더의 프로젝트를 골라서. url/--out 은 무시")
+    p.add_argument("--rename", nargs="+", metavar="DIR",
+                   help="항목 메타데이터를 다시 조회해 현재 파일명 규칙으로 downloads/ 파일을 rename 하고 매니페스트를 갱신 (재다운로드 없음). --dry-run 으로 미리보기")
     p.add_argument("--only", nargs="*", default=None, metavar="ID", help="지정한 영상 ID만 처리")
     p.add_argument("--force", choices=["audio", "video"], help="분류를 무시하고 전부 이 모드로")
     p.add_argument("--no-motion-check", action="store_true", help="스토리보드 정지 이미지 판별 생략")
@@ -603,6 +769,8 @@ def main() -> int:
 
     if args.restore is not None:
         return restore_main(ytdlp, args)
+    if args.rename:
+        return rename_main(ytdlp, args)
 
     print(f"▶ 재생목록 조회: {args.url}  (yt-dlp: {ytdlp})")
     try:
@@ -634,11 +802,12 @@ def main() -> int:
         else:
             mode, reason = classify(info, motion_check=not args.no_motion_check)
 
-        name = display_name(info)
+        artist, song = name_parts(info)
+        name = join_stem(artist, song)
         d = Decision(
             index=idx, id=vid, title=info.get("title") or entry.get("title") or vid, name=name,
             channel=info.get("uploader") or info.get("channel") or "", duration=info.get("duration"),
-            mode=mode, reason=reason, url=url,
+            mode=mode, reason=reason, url=url, artist=artist,
         )
         decisions.append(d)
         tag = "♪ AUDIO" if mode == "audio" else "▶ VIDEO"
