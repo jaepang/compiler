@@ -20,6 +20,7 @@ compiler/
     archive_audio.txt, archive_video.txt   yt-dlp --download-archive (모드별, 재실행 시 중복 방지. 머신 로컬 상태 — gitignore)
     classification.json                    영상별 분류·파일명 결과표 = 복원 매니페스트 {"playlist": {url,title}, "items": [...]} — 커밋 대상
     build/                                 build_timeline.py 산출물 — 절대경로 포함, 매니페스트에서 재생성 (gitignore)
+    *.band                                 GarageBand 프로젝트 — 여기(프로젝트 폴더)에 두고 편집하되 gitignore. 내보낸 믹스는 build/daw/mix.wav
 ```
 
 새 재생목록을 추가할 때는 `02.{이름}/` 처럼 번호를 이어서 만들고, `python3 playlist_dl.py <URL> --out 02.{이름}` 으로 받는다.

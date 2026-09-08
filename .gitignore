@@ -18,3 +18,6 @@ __pycache__/
 
 # 편집기용 산출물 (fcpxml/srt/description/커버) — 절대경로가 들어가고 매니페스트에서 재생성됨
 build/
+
+# GarageBand 프로젝트 (패키지 폴더, 용량 큼) — 프로젝트 폴더 안에 두되 커밋하지 않음. 믹스는 Share > Export 로 build/daw/mix.wav 에
+*.band
