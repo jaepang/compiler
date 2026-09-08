@@ -29,3 +29,5 @@ sfx/*
 .claude/skills/*-workspace/
 # 서브에이전트 worktree
 .claude/worktrees/
+# 프로젝트 폴더의 효과음 심볼릭 링크 (sfx.json 대로 sfx.py link 가 재생성)
+*/sfx/

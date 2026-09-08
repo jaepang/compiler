@@ -22,6 +22,7 @@ compiler/
     build/                                 build_timeline.py 산출물 — 절대경로 포함, 매니페스트에서 재생성 (gitignore)
     *.band                                 GarageBand 프로젝트 — 여기(프로젝트 폴더)에 두고 편집하되 gitignore. 내보낸 믹스는 build/daw/mix.wav
   sfx/                  효과음 라이브러리 (영상 여러 개에 재사용). 오디오는 gitignore, sfx/manifest.json(출처·라이선스·크레딧)만 커밋
+    (프로젝트)/sfx.json                    그 영상이 쓰는 소리 id 목록 — 커밋. (프로젝트)/sfx/ 는 sfx/ 원본으로의 상대 심볼릭 링크(gitignore, `sfx.py link --project` 로 재생성)
   .claude/skills/sfx-collect/  효과음 수집 스킬 — ego-browser 로 Mixkit·Pixabay·Freesound 에서 찾아 받고 sfx.py 로 등록. 사이트별 레시피는 references/sites.md
 ```
 
@@ -141,7 +142,8 @@ python3 playlist_dl.py --cookies-from-browser chrome             # 다운로드
 
 LP 바늘·필름 프로젍터 루프·파도 같은 사운드스케이프를 영상에 깔고 싶다는 요청(2026-09-09). 무료 사이트에서 ego-browser 로 받아 레포 루트 `sfx/<category>/` 에 두고 `sfx/manifest.json` 에 출처·라이선스·크레딧을 기록한다. 정책: 무표기(Mixkit·Pixabay·CC0) 우선, CC BY 는 크레딧 기록, NC 거절, 로그인 없는 사이트 우선.
 
-- `python3 .claude/skills/sfx-collect/scripts/sfx.py list|credits|restore|check` — 매니페스트만 있으면 다른 머신에서 `restore`(직링크 있는 항목) 로 다시 받는다. Pixabay 는 브라우저 다운로드만 되므로 스킬로 다시 받는다.
+- `python3 .claude/skills/sfx-collect/scripts/sfx.py list|credits|restore|check|projects|link|unlink` — 매니페스트만 있으면 다른 머신에서 `restore`(직링크 있는 항목 다운로드 + 프로젝트 링크 재생성) 로 복원. Pixabay 는 브라우저 다운로드만 되므로 스킬로 다시 받는다.
+- 소리는 라이브러리에 두고 영상 프로젝트에는 `sfx.py link <id> --project 01.xxx` 로 상대 심볼릭 링크(`01.xxx/sfx/`)를 만든다. 사용 목록은 `01.xxx/sfx.json` 에 커밋. 스킬은 등록 후 어느 프로젍트에 연결할지 묻는다(2026-09-09 결정). 테스트: `python3 .claude/skills/sfx-collect/scripts/test_sfx.py`.
 - 검증된 사실: Mixkit 은 `assets.mixkit.co/active_storage/sfx/<id>/<id>.wav` 직링크(WAV 만), Pixabay 는 쿠키 모달 거절 후 `Page.setDownloadBehavior` + "Free download" 클릭으로 mp3, Freesound 는 CC0 필터 검색·`-hq.mp3` 프리뷰는 비로그인, 원본은 로그인 handoff.
 - 아직 안 한 것: description.md 크레딧 섹션에 `sfx.py credits` 결과를 자동으로 붙이는 연결.
 

@@ -47,4 +47,4 @@ python3 build_daw.py 01.욕망은오랜병
 
 ## 효과음 (`sfx/`)
 
-LP 바늘·필름 프로젝터 루프·파도 같은 효과음은 `.claude/skills/sfx-collect` 스킬(ego-browser 로 Mixkit·Pixabay·Freesound 검색·다운로드)로 받아 `sfx/<category>/` 에 두고 `sfx/manifest.json` 에 출처·라이선스·크레딧을 기록한다. 오디오는 gitignore, 매니페스트만 커밋. `python3 .claude/skills/sfx-collect/scripts/sfx.py list|credits|restore|check`.
+LP 바늘·필름 프로젝터 루프·파도 같은 효과음은 `.claude/skills/sfx-collect` 스킬(ego-browser 로 Mixkit·Pixabay·Freesound 검색·다운로드)로 받아 `sfx/<category>/` 에 두고 `sfx/manifest.json` 에 출처·라이선스·크레딧을 기록한다. 오디오는 gitignore, 매니페스트만 커밋. 영상 프로젝트에는 `sfx.py link <id> --project 01.xxx` 로 심볼릭 링크(`01.xxx/sfx/`, gitignore)를 만들고 사용 목록은 `01.xxx/sfx.json` 에 커밋한다. `python3 .claude/skills/sfx-collect/scripts/sfx.py list|credits|restore|check|projects|link|unlink`.

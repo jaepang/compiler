@@ -7,14 +7,20 @@
   sfx.py credits [--all]            표기 필요한 항목의 크레딧 문구 (설명문용)
   sfx.py restore                    download_url 이 있는데 파일이 없는 항목을 curl 로 다시 받는다
   sfx.py check ID|FILE              길이·평균 볼륨·(루프) 앞뒤 라우드니스 차
+  sfx.py projects                   연결할 수 있는 프로젝트 폴더 (classification.json 이 있는 폴더)
+  sfx.py link [ID ...] --project DIR   DIR/sfx/ 에 상대 심볼릭 링크 생성 + DIR/sfx.json 에 기록. ID 생략 시 sfx.json 대로 재생성
+  sfx.py unlink ID ... --project DIR   링크·기록 제거
+  sfx.py list --project DIR         그 프로젝트가 쓰는 소리만
 
-레포 루트는 이 스크립트 위치(.claude/skills/sfx-collect/scripts)에서 올라가 찾는다. 오디오는 gitignore, manifest.json 만 커밋.
+레포 루트는 이 스크립트 위치(.claude/skills/sfx-collect/scripts)에서 올라가 찾는다 (테스트용 SFX_ROOT 환경변수로 대체 가능).
+오디오(sfx/…)와 프로젝트의 링크 폴더(DIR/sfx/)는 gitignore, sfx/manifest.json 과 DIR/sfx.json 만 커밋 — 다른 머신은 restore 가 파일을 받고 링크를 다시 만든다.
 """
 from __future__ import annotations
 
 import argparse
 import datetime as dt
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -22,7 +28,7 @@ import sys
 import unicodedata
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[4]  # …/.claude/skills/sfx-collect/scripts → 레포 루트
+ROOT = Path(os.environ.get("SFX_ROOT") or Path(__file__).resolve().parents[4])  # …/.claude/skills/sfx-collect/scripts → 레포 루트
 SFX = ROOT / "sfx"
 MANIFEST = SFX / "manifest.json"
 KINDS = ("oneshot", "loop", "ambience")
@@ -103,12 +109,85 @@ def cmd_add(a: argparse.Namespace) -> int:
     return 0
 
 
+def project_dirs() -> list[Path]:
+    return sorted(p.parent for p in ROOT.glob("*/classification.json"))
+
+
+def project_dir(name: str) -> Path:
+    d = ROOT / name
+    if not (d / "classification.json").exists():
+        sys.exit(f"프로젝트 폴더가 아닙니다(classification.json 없음): {name}. `sfx.py projects` 로 확인")
+    return d
+
+
+def load_uses(d: Path) -> list[str]:
+    f = d / "sfx.json"
+    return json.loads(f.read_text(encoding="utf-8")).get("sounds", []) if f.exists() else []
+
+
+def save_uses(d: Path, ids: list[str]) -> None:
+    (d / "sfx.json").write_text(json.dumps({"sounds": ids}, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def make_links(d: Path, ids: list[str]) -> None:
+    """DIR/sfx/<id><ext> → ../../sfx/<file> 상대 심볼릭 링크 (레포를 옮겨도 살아 있다)"""
+    items = {i["id"]: i for i in load()["items"]}
+    link_dir = d / "sfx"
+    link_dir.mkdir(exist_ok=True)
+    for sid in ids:
+        target = SFX / items[sid]["file"]
+        link = link_dir / (sid + target.suffix)
+        rel = os.path.relpath(target, link_dir)
+        if link.is_symlink() or link.exists():
+            if link.is_symlink() and os.readlink(link) == rel:
+                continue
+            link.unlink()
+        link.symlink_to(rel)
+        print(f"링크: {d.name}/sfx/{link.name} → {rel}{'' if target.exists() else '  (원본 없음 → restore)'}")
+
+
+def cmd_projects(a: argparse.Namespace) -> int:
+    for d in project_dirs():
+        uses = load_uses(d)
+        print(f"{d.name:30s} 소리 {len(uses)}개{'  ' + ', '.join(uses) if uses else ''}")
+    return 0
+
+
+def cmd_link(a: argparse.Namespace) -> int:
+    d = project_dir(a.project)
+    items = {i["id"] for i in load()["items"]}
+    missing = [s for s in a.ids if s not in items]
+    if missing:
+        sys.exit(f"매니페스트에 없는 id: {', '.join(missing)} (`sfx.py list` 로 확인)")
+    ids = load_uses(d)
+    ids += [s for s in a.ids if s not in ids]
+    if not ids:
+        sys.exit(f"{d.name} 에 연결할 소리가 없습니다 (ID 를 주거나 sfx.json 을 만들어 두세요)")
+    save_uses(d, ids)
+    make_links(d, ids)
+    return 0
+
+
+def cmd_unlink(a: argparse.Namespace) -> int:
+    d = project_dir(a.project)
+    ids = [s for s in load_uses(d) if s not in set(a.ids)]
+    for p in (d / "sfx").glob("*") if (d / "sfx").exists() else []:
+        if p.stem in set(a.ids) and p.is_symlink():
+            p.unlink()
+            print(f"해제: {d.name}/sfx/{p.name}")
+    save_uses(d, ids)
+    return 0
+
+
 def cmd_list(a: argparse.Namespace) -> int:
     want = {t.strip() for t in (a.tags or "").split(",") if t.strip()}
+    only = set(load_uses(project_dir(a.project))) if a.project else None
     for i in load()["items"]:
         if a.kind and i["kind"] != a.kind:
             continue
         if want and not want & set(i["tags"]):
+            continue
+        if only is not None and i["id"] not in only:
             continue
         flag = "표기" if i["attribution_required"] else "무표기"
         exists = "" if (SFX / i["file"]).exists() else "  (파일 없음 → restore)"
@@ -139,6 +218,9 @@ def cmd_restore(a: argparse.Namespace) -> int:
         else:
             print(f"브라우저 다운로드 필요: {i['id']} → {i['page_url']} (sfx-collect 스킬로 다시 받아 같은 --id 로 add)")
     print("누락 없음" if not missing else f"누락 {missing}개 처리")
+    for d in project_dirs():  # 프로젝트 링크도 sfx.json 대로 다시 만든다 (새 머신·clone 직후)
+        if load_uses(d):
+            make_links(d, load_uses(d))
     return 0
 
 
@@ -168,7 +250,10 @@ def main() -> int:
     s.add_argument("--source", required=True); s.add_argument("--source-id"); s.add_argument("--page-url", required=True); s.add_argument("--license", required=True)
     s.add_argument("--download-url"); s.add_argument("--attribution"); s.add_argument("--tags"); s.add_argument("--id"); s.add_argument("--note"); s.add_argument("--wav", action="store_true")
     s.set_defaults(fn=cmd_add)
-    s = sub.add_parser("list"); s.add_argument("--tags"); s.add_argument("--kind"); s.set_defaults(fn=cmd_list)
+    s = sub.add_parser("list"); s.add_argument("--tags"); s.add_argument("--kind"); s.add_argument("--project"); s.set_defaults(fn=cmd_list)
+    s = sub.add_parser("projects"); s.set_defaults(fn=cmd_projects)
+    s = sub.add_parser("link"); s.add_argument("ids", nargs="*"); s.add_argument("--project", required=True); s.set_defaults(fn=cmd_link)
+    s = sub.add_parser("unlink"); s.add_argument("ids", nargs="+"); s.add_argument("--project", required=True); s.set_defaults(fn=cmd_unlink)
     s = sub.add_parser("credits"); s.add_argument("--all", action="store_true"); s.set_defaults(fn=cmd_credits)
     s = sub.add_parser("restore"); s.set_defaults(fn=cmd_restore)
     s = sub.add_parser("check"); s.add_argument("target"); s.add_argument("--loop", action="store_true"); s.set_defaults(fn=cmd_check)
