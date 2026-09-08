@@ -92,6 +92,7 @@ python3 playlist_dl.py --cookies-from-browser chrome             # 다운로드
 - video 2곡: 12 Nothing But Thieves Live at The O2 (1080p), 14 Muse Stockholm Syndrome Wembley (480p, 2008 업로드 — 원본 한계로 추정, `yt-dlp -F 9wV9_je85DE` 로 확인 가능)
 - audio 17곡: 16곡 AAC 256k, 18 빈도시 인스트만 128k(그 영상의 AAC 최고치)
 - 분류 규칙을 바꾸거나 오버라이드를 추가해 다시 받을 때는 archive_*.txt 에서 해당 ID 줄을 지워야 재다운로드된다.
+- 2026-09-08 `--rename` 으로 19곡을 `{nn}.{아티스트}-{곡명}` 규칙으로 소급 적용 (재다운로드 없이 rename, 매니페스트 갱신).
 
 ## 남은 것 / 메모
 
