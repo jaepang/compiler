@@ -6,21 +6,43 @@
       "name": "vinyl-needle-oneshot",
       "prompt": "플레이리스트 영상 맨 앞에 LP 바늘 올려놓는 소리 하나 넣고 싶어. 출처 표기 없이 쓸 수 있는 걸로 찾아서 sfx 라이브러리에 등록해줘.",
       "expected_output": "sfx/<category>/ 에 짧은(2~10초) 바늘 소리 파일 1개, sfx/manifest.json 에 kind=oneshot·license 가 무표기 라이선스(Pixabay Content License / Mixkit / CC0)인 항목, 파일·길이·출처·라이선스 표와 GarageBand 사용법 한 줄 보고",
-      "files": []
+      "files": [],
+      "assertions": [
+        "매니페스트에 kind=oneshot 항목이 1개 이상 있다",
+        "등록된 오디오 파일이 존재하고 길이가 1~15초다",
+        "라이선스가 무표기 계열(Pixabay/Mixkit/CC0)이고 attribution_required=false",
+        "오디오 평균 볼륨이 -60dB 보다 크다(무음/깨진 파일 아님)",
+        "report.md 에 sfx/ 경로와 라이선스 이름이 적혀 있다"
+      ]
     },
     {
       "id": 1,
       "name": "film-projector-loop-wav",
       "prompt": "영화 필름 프로젝터 돌아가는 소리를 영상 전체에 깔 거야. 루프로 돌릴 수 있는 걸로, WAV 면 좋겠어. 받아서 등록해줘.",
       "expected_output": "kind=loop 인 프로젝터 소리 1개(가능하면 Mixkit WAV 직링크), 루프 이음새 확인 결과, manifest 항목에 download_url 이 있어 restore 가능, 보고서",
-      "files": []
+      "files": [],
+      "assertions": [
+        "매니페스트에 kind=loop 항목이 1개 이상 있다",
+        "등록된 파일이 WAV(pcm)다",
+        "길이가 5초 이상이다(루프 재료)",
+        "매니페스트 항목에 download_url 이 있어 restore 가능하다",
+        "오디오 평균 볼륨이 -60dB 보다 크다",
+        "report.md 에 루프 이음새 확인 결과(루프/이음새)가 언급된다"
+      ]
     },
     {
       "id": 2,
       "name": "ocean-ambience-long",
       "prompt": "파도 소리 앰비언스를 하나 구해줘. 3분 이상 되는 걸로. 크레딧이 필요한 소리면 설명란에 넣을 문구도 같이 줘.",
       "expected_output": "kind=ambience, 길이 180초 이상인 파도 소리 1개, 라이선스에 맞는 크레딧 문구(무표기면 '불필요' 명시), 보고서",
-      "files": []
+      "files": [],
+      "assertions": [
+        "매니페스트에 kind=ambience 항목이 1개 이상 있다",
+        "길이가 180초 이상이다",
+        "라이선스 문자열이 기록돼 있다",
+        "report.md 에 크레딧 문구 또는 '크레딧 불필요' 명시가 있다",
+        "오디오 평균 볼륨이 -60dB 보다 크다"
+      ]
     }
   ]
 }

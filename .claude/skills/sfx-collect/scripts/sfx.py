@@ -150,8 +150,14 @@ def cmd_check(a: argparse.Namespace) -> int:
     vol = mean_volume(path)
     print(f"{path.name}: {info['duration']:.2f}s {info['sample_rate']}Hz {info['codec']} mean {vol:.1f}dB")
     if (item and item["kind"] == "loop") or a.loop:
-        head, tail = mean_volume(path, 0, 1.0), mean_volume(path, max(0.0, info["duration"] - 1.0), 1.0)
+        dur = info["duration"]
+        head, tail = mean_volume(path, 0, 1.0), mean_volume(path, max(0.0, dur - 1.0), 1.0)
         print(f"  루프 이음새: 앞 1초 {head:.1f}dB / 뒤 1초 {tail:.1f}dB  (차이 {abs(head - tail):.1f}dB — 3dB 안이면 무난)")
+        # 짧은 페이드인/아웃: 처음·마지막 100ms 가 그 다음/이전 1초보다 6dB 이상 조용하면 그대로 이어 붙일 때 딥이 생긴다
+        h100, h_next = mean_volume(path, 0, 0.1), mean_volume(path, 0.1, 1.0)
+        t100, t_prev = mean_volume(path, max(0.0, dur - 0.1), 0.1), mean_volume(path, max(0.0, dur - 1.1), 1.0)
+        fades = [s for s, x, ref in (("앞", h100, h_next), ("뒤", t100, t_prev)) if ref - x >= 6]
+        print("  짧은 페이드: " + (f"{'·'.join(fades)}쪽 100ms 가 6dB 이상 조용함 → 사이클 경계에서 잘라 쓰거나 10ms 크로스페이드 권장" if fades else "없음 (100ms 기준)"))
     return 0
 
 

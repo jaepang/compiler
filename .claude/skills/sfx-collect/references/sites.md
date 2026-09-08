@@ -45,6 +45,8 @@ const cards = await js(String.raw`(() => [...document.querySelectorAll('[class*=
   const a = r.querySelector('a[href*="/sound-effects/"]'); const t = r.innerText.replace(/\s+/g, ' ')
   return { title: a?.innerText.trim(), url: a?.href, duration: (t.match(/\b\d+:\d\d\b/) || [''])[0], text: t.slice(0, 160) } }).filter(x => x.url))()`)
 ```
+- 상세 페이지 텍스트의 첫 `\d+:\d\d` 는 플레이어의 `0:00` 이다 — 길이는 검색 카드에서 읽거나 받은 뒤 ffprobe 로 실측한다.
+- Pixabay 파일은 피크가 0 dBFS 에 붙은 경우가 많다 — 믹스에선 -6dB 정도 낮춰 쓰라고 `note` 에 적어 두면 좋다.
 - **다운로드는 브라우저로만** 된다(직링크 없음, 형식은 MP3). 상세 페이지에서:
 
 ```js
