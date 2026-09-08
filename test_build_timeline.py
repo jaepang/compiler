@@ -94,6 +94,50 @@ assert ET.parse(res3.fcpxml).getroot().find("resources/format").get("frameDurati
 assert [t.frames for t in res3.tracks] == [round(bt.probe(dl / f)["duration"] * 25) for f in ("01.가수-노래.m4a", "02.둘-Second_Song.m4a", "03.Band-Live_Show.mp4")]
 print("  OK")
 
+print("== mix 모드 (--session/--audio): Reaper 세션의 아이템 위치·길이·트림이 곡 경계가 된다 ==")
+import re
+import build_daw as bd
+bd.build(proj)                                    # WAV·무음 영상·session.rpp
+sess = proj / "build" / "daw" / "session.rpp"
+chunks = sess.read_text(encoding="utf-8").split("<ITEM")
+def edit_item(nn, **kv):
+    k = next(i for i, c in enumerate(chunks) if f'NAME "{nn:02d} ' in c)
+    for key, val in kv.items():
+        chunks[k] = re.sub(rf"(\n\s*{key} )\S+", rf"\g<1>{val}", chunks[k], count=1)
+edit_item(2, POSITION="5.0", LENGTH="0.5")        # 2번 곡을 맨 뒤로
+edit_item(3, SOFFS="0.25", LENGTH="1.0")          # 영상 곡 앞 0.25초 트림
+sess.write_text("<ITEM".join(chunks), encoding="utf-8")
+mix = proj / "build" / "daw" / "mix.wav"
+ff("-f", "lavfi", "-i", "sine=frequency=440:duration=6.0", "-ar", "48000", "-c:a", "pcm_s16le", str(mix))
+try:
+    bt.build(proj, fps=30, session=sess); raise AssertionError("--audio 없이 통과")
+except bt.BuildError as e:
+    assert "--audio" in str(e), e
+res = bt.build(proj, fps=30, session=sess, audio=mix)
+cues = bd.parse_rpp(sess)
+assert [c.index for c in cues] == [1, 3, 2], [c.index for c in cues]
+assert [t.decision.index for t in res.tracks] == [1, 3, 2]
+assert [t.start for t in res.tracks] == [round(c.start * 30) for c in cues] and [t.frames for t in res.tracks] == [round(c.length * 30) for c in cues]
+fx = ET.parse(res.fcpxml).getroot(); assets = {a.get("id"): a for a in fx.findall("resources/asset")}
+seq = fx.find(".//sequence"); spine = list(seq.find("spine"))
+assert len(spine) == 1 and spine[0].tag == "asset-clip", [e.tag for e in spine]                 # 스파인 = mix 한 클립
+mixa = assets[spine[0].get("ref")]
+assert (mixa.get("hasAudio"), mixa.get("hasVideo")) == ("1", "0") and src_path(mixa) == mix and spine[0].get("duration") == "180/30s"
+assert frames_of(seq.get("duration")) == 180
+conn = [e for e in spine[0] if e.tag in ("video", "asset-clip")]
+assert [e.tag for e in conn] == ["video", "asset-clip", "video"] and all(e.get("lane") == "1" for e in conn), [(e.tag, e.get("lane")) for e in conn]
+assert [frames_of(e.get("offset")) for e in conn] == [t.start for t in res.tracks]
+assert [frames_of(e.get("duration")) for e in conn] == [t.frames for t in res.tracks]
+v = assets[conn[1].get("ref")]                                                                   # 영상 곡: 무음 mp4, 트림 반영
+assert v.get("hasAudio") == "0" and src_path(v).parent.name == "video" and src_path(v).suffix == ".mp4", v.attrib
+assert conn[1].get("start") == "8/30s", conn[1].get("start")                                     # SOFFS 0.25s → 8프레임
+assert [e.find("marker").get("value") for e in conn] == ["01 가수 - 노래", "03 Band - Live Show", "02 둘 - Second Song"]
+srt = res.srt.read_text(encoding="utf-8").strip().split("\n\n")
+assert srt[2].split("\n")[1:] == [f"{bt.srt_ts(150, 30)} --> {bt.srt_ts(165, 30)}", "둘 - Second Song"], srt[2]
+desc = res.description.read_text(encoding="utf-8")
+assert desc.index("Band - Live Show") < desc.index("둘 - Second Song") and "00:05 둘 - Second Song" in desc, desc
+print("  mix 모드 OK")
+
 print("== 파일 누락 ==")
 (dl / "02.둘-Second_Song.m4a").unlink()
 try:

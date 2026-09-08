@@ -33,3 +33,14 @@ python3 build_timeline.py 01.욕망은오랜병 --fps 25 --gap 1.0
 - `01.욕망은오랜병/build/` 에 `timeline.fcpxml`(재생목록 순서대로 일렬 배치, 크로스페이드 없음, 곡마다 마커), `tracklist.srt`("지금 재생 중" 자막용), `description.md`(YouTube 챕터 타임스탬프 + 크레딧), `covers/`(m4a 임베드 커버) 생성
 - 음원 곡은 V1 에 앨범아트 정지 이미지 + A1 에 음원, 영상 곡은 mp4 그대로. 1080p, `--fps` 24/25/30/60, `--gap` 초 단위 곡 간격
 - Resolve: File > Import > Timeline > Import AAF, EDL, XML… 로 fcpxml, File > Import > Subtitle 로 srt. 미디어는 downloads/ 절대경로로 연결되므로 `build/` 는 gitignore — 다른 머신은 `--restore` 뒤 다시 생성
+
+## Reaper 음원 선편집 → Resolve (`build_daw.py`, mix 모드)
+
+```bash
+python3 build_daw.py 01.욕망은오랜병
+```
+
+- `build/daw/` 에 `audio/{nn}.{어간}.wav`(19곡 48kHz/24bit, 영상 곡은 오디오만), `video/`(영상 곡을 무음으로, 재인코딩 없음), `session.rpp`(Reaper 프로젝트: 트랙 1개에 일렬 배치 + 곡 시작 마커 + 10ms 페이드, 크로스페이드 없음) 생성
+- Reaper 로 `session.rpp` 열어 간격·트림·볼륨·페이드 편집 → 저장 → File > Render 로 `build/daw/mix.wav`(48kHz) 렌더
+- `python3 build_timeline.py 01.욕망은오랜병 --session build/daw/session.rpp --audio build/daw/mix.wav` — 저장된 세션의 아이템 위치·길이·트림을 곡 경계로 읽어(마커 내보내기 불필요) A1 = mix 한 클립, V1 = 커버/무음 영상, 마커·SRT·description 을 그 경계에 맞춰 만든다
+- Reaper 는 dotfiles cask `reaper` 로 설치(60일 평가판, 이후 $60 개인 라이선스). 테스트: `python3 test_build_daw.py`

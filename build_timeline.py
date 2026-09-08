@@ -4,6 +4,10 @@ build_timeline.py — 매니페스트(classification.json)대로 DaVinci Resolve
 
   python3 build_timeline.py 01.욕망은오랜병                 # → 01.욕망은오랜병/build/
   python3 build_timeline.py 01.욕망은오랜병 --fps 25 --gap 1.0
+  python3 build_timeline.py 01.욕망은오랜병 --session build/daw/session.rpp --audio build/daw/mix.wav   # Reaper 선편집 결과 반영 (mix 모드)
+
+mix 모드: build_daw.py 로 만든 Reaper 세션을 편집·저장하고 mix.wav 를 렌더한 뒤 넘기면, 세션의 아이템 위치·길이·트림이 곡 경계가 된다.
+  A1 = mix.wav 한 클립(스파인), V1 = 커버 정지 이미지/무음 영상(build/daw/video/)을 그 경계에 맞춰 연결(lane 1). 마커·SRT·description 도 같은 경계.
 
 산출물 (build/ 는 절대경로가 들어가고 매니페스트에서 언제든 재생성되므로 gitignore):
   timeline.fcpxml   재생목록 순서대로 일렬 배치, 크로스페이드 없음(곡 사이 간격은 --gap 초).
@@ -51,6 +55,7 @@ class Track:
     start: int  # 타임라인 시작 프레임 (gap 포함)
     cover: Path | None  # 음원 곡의 배경 정지 이미지
     provider: str  # "Provided to YouTube by X" 의 X, 없으면 ""
+    src_start: int = 0  # 영상 곡의 소스 시작 프레임 (mix 모드에서 Reaper 트림 반영)
 
 
 @dataclass
@@ -137,7 +142,9 @@ def provider_of(tags: dict) -> str:
 # --------------------------------------------------------------------------- 산출물
 
 
-def write_fcpxml(path: Path, title: str, tracks: list[Track], fps: int, gap_frames: int, total: int) -> None:
+def write_fcpxml(path: Path, title: str, tracks: list[Track], fps: int, gap_frames: int, total: int,
+                 mix: tuple[Path, int] | None = None) -> None:
+    """mix=(mix.wav, 프레임수) 이면 스파인은 mix 한 클립이고 곡 클립은 lane 1 에 연결된다"""
     root = ET.Element("fcpxml", version="1.8")
     res = ET.SubElement(root, "resources")
     ET.SubElement(res, "format", id="r1", name=f"FFVideoFormat1080p{fps}", frameDuration=f"1/{fps}s", width="1920", height="1080")
@@ -154,6 +161,23 @@ def write_fcpxml(path: Path, title: str, tracks: list[Track], fps: int, gap_fram
     seq = ET.SubElement(project, "sequence", format="r1", duration=frame_time(total, fps), tcStart="0s", tcFormat="NDF",
                         audioLayout="stereo", audioRate="48k")
     spine = ET.SubElement(seq, "spine")
+    if mix:
+        mix_path, mix_frames = mix
+        parent = ET.SubElement(spine, "asset-clip", ref=asset(mix_path, duration=frame_time(mix_frames, fps), hasVideo="0", hasAudio="1",
+                                                              audioSources="1", audioChannels="2"),
+                               offset="0s", name=title, start="0s", duration=frame_time(mix_frames, fps), audioRole="music")
+        for t in tracks:  # 곡 클립은 mix 위 lane 1 (V1) 에 연결
+            dur, offset = frame_time(t.frames, fps), frame_time(t.start, fps)
+            if t.kind == "video":
+                clip = ET.SubElement(parent, "asset-clip", ref=asset(t.path, duration=frame_time(t.src_start + t.frames, fps), hasVideo="1", hasAudio="0"),
+                                     lane="1", offset=offset, name=t.label, start=frame_time(t.src_start, fps), duration=dur)
+            else:
+                clip = ET.SubElement(parent, "video", ref=asset(t.cover, duration="0s", hasVideo="1", hasAudio="0"),
+                                     lane="1", offset=offset, name=t.label, start="0s", duration=dur)
+            ET.SubElement(clip, "marker", start=frame_time(t.src_start, fps), duration=frame_time(1, fps), value=f"{t.decision.index:02d} {t.label}")
+        ET.indent(root)
+        path.write_text('<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE fcpxml>\n' + ET.tostring(root, encoding="unicode") + "\n", encoding="utf-8")
+        return
     for i, t in enumerate(tracks):
         if i and gap_frames:
             ET.SubElement(spine, "gap", name="Gap", offset=frame_time(t.start - gap_frames, fps), start="0s", duration=frame_time(gap_frames, fps))
@@ -190,14 +214,9 @@ def write_description(path: Path, title: str, playlist_url: str, tracks: list[Tr
 # --------------------------------------------------------------------------- 빌드
 
 
-def build(project_dir: Path | str, fps: int = 30, gap: float = 0.0, ffprobe: str | None = None, ffmpeg: str | None = None) -> BuildResult:
-    ffprobe_exe, ffmpeg_exe = shutil.which(ffprobe or "ffprobe"), shutil.which(ffmpeg or "ffmpeg")
-    if not ffprobe_exe or not ffmpeg_exe:
-        raise BuildError("ffprobe/ffmpeg 를 찾을 수 없습니다 (brew install ffmpeg, 또는 --ffprobe/--ffmpeg 로 경로 지정)")
-    project_dir = Path(project_dir).absolute()  # resolve() 는 macOS /var → /private/var 로 바꿔 호출자의 경로와 어긋난다
-    meta, items = read_manifest(project_dir)
+def locate_media(project_dir: Path, items: list[Decision]) -> dict[str, Path]:
+    """downloads/ 에서 매니페스트 항목의 미디어 파일을 찾는다 (id → 경로). 하나라도 없으면 BuildError"""
     dl = project_dir / "downloads"
-
     files: dict[str, Path] = {}
     missing: list[str] = []
     for d in items:
@@ -209,29 +228,70 @@ def build(project_dir: Path | str, fps: int = 30, gap: float = 0.0, ffprobe: str
     if missing:
         raise BuildError("downloads/ 에 파일이 없는 곡: " + ", ".join(missing)
                          + f"\n먼저 python3 playlist_dl.py --restore {project_dir.name} 으로 받으세요.")
+    return files
+
+
+
+def build(project_dir: Path | str, fps: int = 30, gap: float = 0.0, ffprobe: str | None = None, ffmpeg: str | None = None,
+          session: Path | str | None = None, audio: Path | str | None = None) -> BuildResult:
+    """session(Reaper .rpp)+audio(mix.wav) 를 주면 mix 모드: 세션의 아이템 위치·길이·트림이 곡 경계, A1 은 mix 하나"""
+    ffprobe_exe, ffmpeg_exe = shutil.which(ffprobe or "ffprobe"), shutil.which(ffmpeg or "ffmpeg")
+    if not ffprobe_exe or not ffmpeg_exe:
+        raise BuildError("ffprobe/ffmpeg 를 찾을 수 없습니다 (brew install ffmpeg, 또는 --ffprobe/--ffmpeg 로 경로 지정)")
+    project_dir = Path(project_dir).absolute()  # resolve() 는 macOS /var → /private/var 로 바꿔 호출자의 경로와 어긋난다
+    meta, items = read_manifest(project_dir)
+    files = locate_media(project_dir, items)
 
     build_dir = project_dir / "build"
     covers = build_dir / "covers"
     covers.mkdir(parents=True, exist_ok=True)
     gap_frames = round(gap * fps)
     tracks: list[Track] = []
-    pos = 0
-    for d in items:
-        f = files[d.id]
+    mix: tuple[Path, int] | None = None
+
+    def make_track(d: Decision, f: Path, frames: int, start: int, src_start: int = 0, video_path: Path | None = None) -> Track:
         info = probe(f, ffprobe_exe)
-        frames = max(1, round(info["duration"] * fps))
         kind = "video" if info["has_video"] else "audio"
         cover = None
         if kind == "audio":
             cover = extract_cover(f, info["cover"], covers, d.index, ffmpeg_exe) if info["cover"] else None
             cover = cover or black_png(covers, ffmpeg_exe)
-        tracks.append(Track(d, f, track_label(d), kind, frames, pos, cover, provider_of(info["tags"])))
-        pos += frames + gap_frames
-    total = pos - gap_frames if tracks else 0  # 마지막 곡 뒤에는 gap 없음
+        elif video_path is not None:
+            if not video_path.exists():
+                raise BuildError(f"무음 영상이 없습니다: {video_path.name} — 먼저 python3 build_daw.py {project_dir.name} 를 실행하세요.")
+            f = video_path
+        return Track(d, f, track_label(d), kind, frames, start, cover, provider_of(info["tags"]), src_start)
+
+    if session is not None:
+        if audio is None:
+            raise BuildError("--session 에는 --audio (Reaper 에서 렌더한 mix.wav) 가 필요합니다.")
+        from build_daw import parse_rpp  # build_daw 가 이 모듈을 import 하므로 여기서 지연 import
+
+        by_index = {d.index: d for d in items}
+        mix_path = Path(audio).absolute()
+        mix_frames = max(1, round(probe(mix_path, ffprobe_exe)["duration"] * fps))
+        video_dir = build_dir / "daw" / "video"
+        for c in parse_rpp(Path(session)):
+            d = by_index.get(c.index)
+            if d is None:
+                raise BuildError(f"세션의 아이템 '{c.index:02d} {c.label}' 에 해당하는 매니페스트 항목이 없습니다.")
+            f = files[d.id]
+            tracks.append(make_track(d, f, max(1, round(c.length * fps)), round(c.start * fps), round(c.offset * fps),
+                                     video_dir / (safe_stem(d.index, d.name) + f.suffix)))
+        total = max([mix_frames, *(t.start + t.frames for t in tracks)])
+        mix = (mix_path, mix_frames)
+    else:
+        pos = 0
+        for d in items:
+            f = files[d.id]
+            frames = max(1, round(probe(f, ffprobe_exe)["duration"] * fps))
+            tracks.append(make_track(d, f, frames, pos))
+            pos += frames + gap_frames
+        total = pos - gap_frames if tracks else 0  # 마지막 곡 뒤에는 gap 없음
 
     title = meta.get("title") or project_dir.name
     res = BuildResult(build_dir / "timeline.fcpxml", build_dir / "tracklist.srt", build_dir / "description.md", covers, tracks)
-    write_fcpxml(res.fcpxml, title, tracks, fps, gap_frames, total)
+    write_fcpxml(res.fcpxml, title, tracks, fps, gap_frames, total, mix)
     write_srt(res.srt, tracks, fps)
     write_description(res.description, title, meta.get("url") or "", tracks, fps)
     return res
@@ -242,11 +302,13 @@ def main() -> int:
     p.add_argument("dir", help="프로젝트 폴더 (classification.json 과 downloads/ 가 있는 곳)")
     p.add_argument("--fps", type=int, default=30, choices=[24, 25, 30, 60], help="타임라인 프레임레이트 (기본 30)")
     p.add_argument("--gap", type=float, default=0.0, metavar="SEC", help="곡 사이 간격 초 (기본 0)")
+    p.add_argument("--session", metavar="RPP", help="build_daw.py 로 만들고 Reaper 에서 편집·저장한 세션 (mix 모드)")
+    p.add_argument("--audio", metavar="WAV", help="Reaper 에서 렌더한 mix.wav (mix 모드 필수)")
     p.add_argument("--ffprobe", metavar="PATH")
     p.add_argument("--ffmpeg", metavar="PATH")
     args = p.parse_args()
     try:
-        res = build(args.dir, fps=args.fps, gap=args.gap, ffprobe=args.ffprobe, ffmpeg=args.ffmpeg)
+        res = build(args.dir, fps=args.fps, gap=args.gap, ffprobe=args.ffprobe, ffmpeg=args.ffmpeg, session=args.session, audio=args.audio)
     except BuildError as e:
         sys.exit(str(e))
     for t in res.tracks:

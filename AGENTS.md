@@ -9,7 +9,9 @@ YouTube 재생목록을 yt-dlp 로 내려받아 **유튜브 영상 제작 소스
 compiler/
   playlist_dl.py        메인 스크립트 (yt-dlp CLI 를 subprocess 로 호출, pip yt_dlp 모듈 안 씀)
   test_offline.py       네트워크 없이 분류·파일명·yt-dlp 인자 검증 (python3 test_offline.py)
-  build_timeline.py     매니페스트 → DaVinci Resolve 용 build/ (timeline.fcpxml·tracklist.srt·description.md·covers/) 생성
+  build_timeline.py     매니페스트 → DaVinci Resolve 용 build/ (timeline.fcpxml·tracklist.srt·description.md·covers/) 생성. --session/--audio 로 mix 모드
+  build_daw.py          매니페스트 → Reaper 세션 build/daw/ (WAV 디코드·무음 영상·session.rpp). 음원 선편집용, 저장된 .rpp 를 build_timeline 이 읽는다
+  test_build_daw.py     ffmpeg 합성 미디어로 build_daw 검증 (python3 test_build_daw.py)
   test_build_timeline.py  ffmpeg 로 초소형 미디어를 합성해 build_timeline 검증 (python3 test_build_timeline.py)
   fixture_meta.json     19곡 실제 메타데이터 (제목/채널/설명/태그/기대 파일명) — 테스트용
   README.md, requirements.txt(선택 의존성 pillow 만)
@@ -54,6 +56,21 @@ python3 build_timeline.py 01.욕망은오랜병 --fps 25 --gap 1.0
 - **Resolve 21.0.4(App Store 판)에서 import 확인 (2026-09-08)**: 타임라인 `욕망은 오랜 병` 01:30:48:01(빌드 합계와 일치), V1 19클립(정지 17 + mp4 2), A1 19클립. 음원 `lane="-1"` → A1, 정지 이미지 → 곡 길이, mp4 → 영상 클립, 마커 → 각 V1 클립의 클립 마커(Index 패널 `M` 행)로 들어온다.
 - Resolve 는 dotfiles `homebrew.masApps`(App Store 판, id 571213070)로 설치. 샌드박스라 첫 import 때 "Grant Access To Folder?" 가 뜨면 프로젝트 폴더를 선택한다(그 폴더가 Media Storage 위치로도 등록됨). Import 는 File > Import > Timeline 메뉴로만 가능하고 Import Media·컨텍스트 메뉴·Media Storage 드래그는 fcpxml 을 받지 않는다.
 - 알려진 시각 이슈: 추출 커버는 YouTube 썸네일(1280x720)이라 정방형 아트 양옆에 회색 띠가 있다 — 중앙 crop 옵션 또는 V1 배경 교체로 해결 예정.
+
+## Reaper 선편집 왕복 (`build_daw.py` + `build_timeline.py --session/--audio`)
+
+음원 편집은 DAW 에서 먼저 하고 싶다는 요청(2026-09-08). GarageBand 는 프로젝트 포맷이 비공개 바이너리라 생성 불가 → Reaper(.rpp 평문) 로 결정. 설치는 dotfiles `casks` 에 `reaper` 를 이 맥(AL02428916) 조건으로 선언.
+
+```bash
+python3 build_daw.py 01.욕망은오랜병                  # build/daw/{audio/*.wav, video/*.mp4, session.rpp}
+python3 build_timeline.py 01.욕망은오랜병 --session build/daw/session.rpp --audio build/daw/mix.wav
+```
+
+- `build_daw.py`: 19곡 전부 48kHz/24bit WAV 로 디코드(영상 곡은 오디오만, ~1.5GB), 영상 곡은 `-map 0:v:0 -an -c copy` 로 무음 mp4(임베드 커버 png 스트림 제외). `session.rpp` 는 트랙 1개, 아이템 이름 `nn 아티스트 - 곡명`, 곡 시작 MARKER, FADEIN/FADEOUT 10ms, AUTOXFADE 0. 소스 mtime 보다 새 산출물은 건너뛴다.
+- 재광님: Reaper 로 열어 편집 → 저장 → File > Render → `build/daw/mix.wav`. 마커 내보내기 같은 추가 단계 없음.
+- mix 모드 `build_timeline`: `build_daw.parse_rpp` 가 저장된 .rpp 의 ITEM(POSITION/LENGTH/SOFFS/NAME/FILE)을 읽어 위치순 Cue 로 — 곡 번호는 아이템 이름 접두어 `nn`. FCPXML 은 스파인 = mix.wav 한 `<asset-clip>`(A1), 곡마다 `lane="1"` 연결 클립(커버 `<video>` 또는 무음 mp4 `<asset-clip start=트림>`) + 마커. SRT·description 도 큐 기준. `--gap` 은 무시.
+- 순환 import 주의: `build_daw` 가 `build_timeline` 을 import 하므로 `build_timeline.build` 는 `parse_rpp` 를 함수 안에서 지연 import 한다.
+- **미검증 (2026-09-08)**: 생성한 session.rpp 를 Reaper 가 실제로 어떻게 여는지, mix 모드 FCPXML(스파인 오디오 + lane 1 영상)을 Resolve 가 V1/A1 로 받는지는 아직 확인 전. 어긋나면 `write_rpp` / `write_fcpxml` 의 mix 분기만 고치면 된다.
 
 ## 실행 (반드시 로컬 터미널 — 프리미엄 쿠키가 Chrome 에 있음)
 
@@ -118,5 +135,5 @@ python3 playlist_dl.py --cookies-from-browser chrome             # 다운로드
 
 - `~/Music/_to_delete_playlist_dl/` 에 초기 버전 스크립트 사본이 남아 있음 — 지워도 됨.
 - git 저장소 (2026-09-08 init, main). `downloads/`·`archive_*.txt`·미디어 확장자는 `.gitignore` — 커밋되는 산출물은 `*/classification.json` 만.
-- 코드 변경 후에는 `python3 test_offline.py` (yt-dlp 가 PATH 에 있어야 CLI 검증 단계까지 통과. pillow 없으면 스토리보드 섹션은 건너뛴다 — 스크립트와 같은 정책). `build_timeline.py` 를 고쳤으면 `python3 test_build_timeline.py` (ffmpeg 필요).
+- 코드 변경 후에는 `python3 test_offline.py` (yt-dlp 가 PATH 에 있어야 CLI 검증 단계까지 통과. pillow 없으면 스토리보드 섹션은 건너뛴다 — 스크립트와 같은 정책). `build_timeline.py` 를 고쳤으면 `python3 test_build_timeline.py`, `build_daw.py` 는 `python3 test_build_daw.py` (둘 다 ffmpeg 필요).
 - 대화 언어는 한국어.
