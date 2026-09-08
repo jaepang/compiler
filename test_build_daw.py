@@ -43,6 +43,7 @@ assert [t.label for t in res.tracks] == ["가수 - 노래", "둘 - Second Song",
 rpp = res.session.read_text(encoding="utf-8")
 assert rpp.startswith("<REAPER_PROJECT") and "SAMPLERATE 48000" in rpp and rpp.count("<TRACK") == 1 and rpp.count("<ITEM") == 3
 assert rpp.count("<SOURCE WAVE") == 3 and rpp.count("\nMARKER") + rpp.count("  MARKER") >= 3
+assert "<NOTES 0 2\n    |테스트 목록\n  >" in rpp and "\n  NOTES " not in rpp        # 노트는 청크 형식 (REAPER Project Load Warning 재현 방지)
 assert 'NAME "01 가수 - 노래"' in rpp and f'FILE "{wavs[0]}"' in rpp
 print("  산출물·배치 OK")
 

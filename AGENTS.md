@@ -70,7 +70,8 @@ python3 build_timeline.py 01.욕망은오랜병 --session build/daw/session.rpp 
 - 재광님: Reaper 로 열어 편집 → 저장 → File > Render → `build/daw/mix.wav`. 마커 내보내기 같은 추가 단계 없음.
 - mix 모드 `build_timeline`: `build_daw.parse_rpp` 가 저장된 .rpp 의 ITEM(POSITION/LENGTH/SOFFS/NAME/FILE)을 읽어 위치순 Cue 로 — 곡 번호는 아이템 이름 접두어 `nn`. FCPXML 은 스파인 = mix.wav 한 `<asset-clip>`(A1), 곡마다 `lane="1"` 연결 클립(커버 `<video>` 또는 무음 mp4 `<asset-clip start=트림>`) + 마커. SRT·description 도 큐 기준. `--gap` 은 무시.
 - 순환 import 주의: `build_daw` 가 `build_timeline` 을 import 하므로 `build_timeline.build` 는 `parse_rpp` 를 함수 안에서 지연 import 한다.
-- **미검증 (2026-09-08)**: 생성한 session.rpp 를 Reaper 가 실제로 어떻게 여는지, mix 모드 FCPXML(스파인 오디오 + lane 1 영상)을 Resolve 가 V1/A1 로 받는지는 아직 확인 전. 어긋나면 `write_rpp` / `write_fcpxml` 의 mix 분기만 고치면 된다.
+- **Reaper 7.79 에서 session.rpp 로드 확인 (2026-09-08)**: 트랙 1개, `[items] 19`, 마커·아이템 이름 정상. 프로젝트 노트는 `<NOTES … >` 청크여야 한다(평문 `NOTES` 줄은 "Project Load Warning"). 첫 실행 때 오디오 장치 선택 안내와 평가판 About 창이 뜬다.
+- **미검증**: mix 모드 FCPXML(스파인 = mix.wav, lane 1 영상)을 Resolve 가 A1/V1 로 받는지 — 재광님이 Reaper 에서 편집·렌더한 뒤 첫 import 때 확인. 어긋나면 `write_fcpxml` 의 mix 분기만 고치면 된다.
 
 ## 실행 (반드시 로컬 터미널 — 프리미엄 쿠키가 Chrome 에 있음)
 

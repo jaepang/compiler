@@ -100,7 +100,7 @@ def write_rpp(path: Path, title: str, tracks: list[DawTrack]) -> None:
     fade = f"1 {FADE_SEC:g} 0 1 0 0 0"
     lines = [f'<REAPER_PROJECT 0.1 "7.0/macOS-arm64" {int(time.time())}',
              "  RIPPLE 0", "  GROUPOVERRIDE 0 0 0", "  AUTOXFADE 0", "  SAMPLERATE 48000 0 0", "  TEMPO 120 4 4",
-             f"  NOTES 0 2", f"  |{title}"]
+             "  <NOTES 0 2", f"    |{title}", "  >"]  # 프로젝트 노트는 청크 형식이어야 한다 (평문 NOTES 줄은 REAPER 가 "not understood" 경고)
     for i, t in enumerate(tracks, 1):
         lines.append(f"  MARKER {i} {t.start:.6f} {_quote(f'{t.decision.index:02d} {t.label}')} 0 0 1 R {_guid()} 0")
     lines += [f"  <TRACK {_guid()}", f"    NAME {_quote(title)}", "    PEAKCOL 16576", "    VOLPAN 1 0 -1 -1 1", "    MUTESOLO 0 0 0"]
