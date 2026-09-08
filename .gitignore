@@ -1,0 +1,17 @@
+# yt-dlp 산출물 — 미디어 + .part/.ytdl 임시파일 + 썸네일 전부. 다른 머신에서는 classification.json 으로 --restore.
+downloads/
+
+# yt-dlp --download-archive 기록 — 머신 로컬 상태. 커밋하면 다른 머신에서 전부 "이미 받음"으로 스킵된다.
+archive_*.txt
+
+# 안전망: downloads/ 밖으로 떨어져도 미디어는 안 올라가게
+*.m4a
+*.mp4
+*.mkv
+*.webm
+*.opus
+*.part
+
+# python / macOS
+__pycache__/
+.DS_Store

@@ -1,0 +1,220 @@
+"""네트워크 없이 분류/템플릿/옵션을 검증하는 간단 테스트 (브라우저에서 수집한 실제 메타데이터 사용)"""
+import io, json, sys, types
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent))
+import playlist_dl as pdl
+import subprocess, tempfile, shutil
+
+META = json.loads(Path(__file__).with_name("fixture_meta.json").read_text(encoding="utf-8"))
+
+# 1) 분류 — 스토리보드 체크 없이 (Topic/제목 힌트/오버라이드만으로 19개 전부 결정돼야 함)
+print("== classify ==")
+expected = {"oGQ6Ykwha1E": "video", "9wV9_je85DE": "video", "E8-P833ptPk": "audio"}
+for m in META:
+    info = {"id": m["id"], "title": m["title"], "uploader": m["author"], "channel": m["author"], "description": m["desc"]}
+    mode, reason = pdl.classify(info, motion_check=False)
+    exp = expected.get(m["id"], "audio")
+    assert mode == exp, (m["id"], mode, exp)
+    print(f"  {mode:5s} {m['title'][:45]:45s} | {reason}")
+
+# 1b) 오버라이드 없이도 규칙만으로 같은 결론이 나오는지 (제목 힌트 검증)
+saved = dict(pdl.MANUAL_OVERRIDES); pdl.MANUAL_OVERRIDES.clear()
+for m in META:
+    info = {"id": m["id"], "title": m["title"], "uploader": m["author"], "description": m["desc"]}
+    mode, reason = pdl.classify(info, motion_check=False)
+    assert mode == expected.get(m["id"], "audio"), (m["id"], mode, reason)
+pdl.MANUAL_OVERRIDES.update(saved)
+print("  규칙만으로도 19/19 일치")
+
+# 1c) 파일명용 영상명 (한글 우선)
+print("== display_name ==")
+for m in META:
+    info = {"id": m["id"], "title": m["title"], "uploader": m["author"], "description": m["desc"], "tags": m["tags"]}
+    name = pdl.display_name(info)
+    mark = "→" if name != m["title"] else " "
+    print(f"  {m['title'][:40]:40s} {mark} {name}")
+    assert name == m["expected_name"], (m["id"], name, m["expected_name"])
+    fn = pdl.outtmpl_for(Path("downloads"), 1, name) % {"ext": "m4a"}
+    assert "/" not in fn.split("downloads/")[1] and fn.endswith(".m4a")
+# 특수문자·퍼센트가 파일명/템플릿을 깨지 않는지
+
+# 2) 스토리보드 정지 이미지 판별 — 합성 시트로 urlopen 을 가짜로 대체
+print("== storyboard_motion ==")
+try:
+    from PIL import Image, ImageDraw
+except ImportError:
+    print("  (pillow 없음 — 5번 규칙 검증 건너뜀. 스크립트도 이 경우 그 단계를 생략한다)")
+else:
+    import random
+    def make_sheet(static):
+        cols, rows, w, h = 5, 5, 80, 45
+        sheet = Image.new("L", (cols * w, rows * h), 0)
+        d = ImageDraw.Draw(sheet)
+        for i in range(cols * rows - 3):  # 마지막 3칸은 빈(검은) 타일
+            x, y = (i % cols) * w, (i // cols) * h
+            if static:
+                d.rectangle([x + 10, y + 10, x + 60, y + 35], fill=120); d.ellipse([x + 20, y + 5, x + 40, y + 25], fill=200)
+            else:
+                for _ in range(6):
+                    x0, y0 = random.randint(0, 60), random.randint(0, 30)
+                    d.rectangle([x + x0, y + y0, x + x0 + random.randint(1, 20), y + y0 + random.randint(1, 15)], fill=random.randint(30, 255))
+        buf = io.BytesIO(); sheet.save(buf, "JPEG", quality=80); return buf.getvalue()
+
+    class FakeResp:
+        def __init__(self, data): self.data = data
+        def read(self): return self.data
+        def __enter__(self): return self
+        def __exit__(self, *a): pass
+
+    for static in (True, False):
+        data = make_sheet(static)
+        pdl.urllib.request.urlopen = lambda url, timeout=0, _d=data: FakeResp(_d)
+        info = {"formats": [{"format_note": "storyboard", "width": 80, "height": 45, "rows": 5, "columns": 5, "fragments": [{"url": "x"}]}]}
+        v = pdl.storyboard_motion(info)
+        print(f"  static={static}: motion={v:.2f} → {'audio' if v < pdl.MOTION_THRESHOLD else 'video'}")
+        assert (v < pdl.MOTION_THRESHOLD) == static
+
+# 3) yt-dlp CLI 인자 유효성 & 포맷 선택 & 파일명 — 가짜 info.json 을 --load-info-json 으로 읽혀 --print 로 확인
+print("== yt-dlp CLI (dry-run via --load-info-json) ==")
+ytdlp = shutil.which("yt-dlp"); assert ytdlp, "yt-dlp CLI 가 PATH 에 없음"
+args = types.SimpleNamespace(windows_filenames=False, quiet=True, cookies_from_browser=None, cookies=None,
+                             video_container="mp4", audio_codec="aac", no_thumbnail=False)   # 기본값: 편집기·YouTube 호환
+base = Path(tempfile.mkdtemp()) / "01.욕망은오랜병"
+fake_formats = [
+    # quality 는 YouTube 의 audioQuality(medium/high) 를 yt-dlp 가 정수로 매핑한 값과 같은 역할
+    {"format_id": "251", "ext": "webm", "acodec": "opus", "vcodec": "none", "abr": 160.0, "quality": 3, "url": "http://x/a", "protocol": "https"},
+    {"format_id": "140", "ext": "m4a", "acodec": "mp4a.40.2", "vcodec": "none", "abr": 128.0, "quality": 3, "url": "http://x/b", "protocol": "https"},
+    {"format_id": "141", "ext": "m4a", "acodec": "mp4a.40.2", "vcodec": "none", "abr": 256.0, "quality": 4, "url": "http://x/b2", "protocol": "https"},
+    {"format_id": "137", "ext": "mp4", "acodec": "none", "vcodec": "avc1", "width": 1920, "height": 1080, "fps": 30, "url": "http://x/c", "protocol": "https"},
+    {"format_id": "313", "ext": "webm", "acodec": "none", "vcodec": "vp9", "width": 3840, "height": 2160, "fps": 30, "url": "http://x/d", "protocol": "https"},
+    {"format_id": "18", "ext": "mp4", "acodec": "mp4a.40.2", "vcodec": "avc1", "width": 640, "height": 360, "abr": 96, "url": "http://x/e", "protocol": "https"},
+    {"format_id": "sb1", "format_note": "storyboard", "ext": "mhtml", "protocol": "mhtml", "acodec": "none", "vcodec": "none", "width": 80, "height": 45, "rows": 5, "columns": 5, "url": "http://x/sb", "fragments": [{"url": "http://x/sb0"}]},
+]
+def kw_of(vid): return next(m["tags"] for m in META if m["id"] == vid)
+def fake_info(**kw):
+    d = {"_type": "video", "id": "17WFr1WGtrA", "title": "Light Of Morning", "uploader": "Samui - Topic", "channel": "Samui - Topic",
+         "artists": ["Samui"], "track": "Light Of Morning", "album": "Bad Joke", "duration": 165, "tags": kw_of("17WFr1WGtrA"),
+         "extractor": "youtube", "extractor_key": "Youtube", "webpage_url": "https://www.youtube.com/watch?v=17WFr1WGtrA",
+         "formats": [dict(f) for f in fake_formats], "thumbnails": []}
+    d.update(kw); return d
+
+def cli_dry(info, mode, idx):
+    f = base / f"{info['id']}.info.json"; base.mkdir(parents=True, exist_ok=True)
+    f.write_text(json.dumps(info), encoding="utf-8")
+    cmd = [ytdlp, *pdl.common_args(args), *pdl.mode_args(mode, args, base, idx, pdl.display_name(info)),
+           "--print", pdl.DRY_RUN_TEMPLATE, "--print", "filename", "--load-info-json", str(f)]
+    p = subprocess.run(cmd, capture_output=True, text=True)
+    assert p.returncode == 0, p.stderr
+    return p.stdout.strip().splitlines()
+
+fmt, fn = cli_dry(fake_info(), "audio", 1)
+print("  audio :", pdl.format_dry_line(fmt), "→", Path(fn).name)
+assert fmt.startswith("141|") and "256" in fmt, fmt            # 프리미엄 256k AAC 가 선택
+assert fn == str(base / "downloads" / "01.아침의 빛.m4a"), fn
+
+fmt, fn = cli_dry(fake_info(id="oGQ6Ykwha1E", title="Nothing But Thieves - Ban All the Music (Live at The O2)",
+                            uploader="NBTVEVO", channel="NBTVEVO", artists=None, track=None, album=None, tags=[]), "video", 12)
+print("  video :", pdl.format_dry_line(fmt), "→", Path(fn).name)
+assert fmt.startswith("137+141|") and "1920x1080" in fmt and "avc1" in fmt, fmt   # 4K VP9 대신 1080p H.264 (호환)
+assert fn == str(base / "downloads" / "12.Nothing But Thieves - Ban All the Music (Live at The O2).mp4"), fn
+
+# 최고 품질 모드 (--video-container mkv --audio-codec best) → 4K VP9 + 141, .mkv
+best = types.SimpleNamespace(**{**vars(args), "video_container": "mkv", "audio_codec": "best"})
+_a, args = args, best
+fmt, fn = cli_dry(fake_info(id="oGQ6Ykwha1E", title="NBT Live", uploader="NBTVEVO", channel="NBTVEVO", artists=None, track=None, album=None, tags=[]), "video", 12)
+print("  video(mkv/best) :", pdl.format_dry_line(fmt), "→", Path(fn).name)
+assert fmt.startswith("313+141|") and fn.endswith(".mkv"), (fmt, fn)
+# opus 만 256k 인 상황에서 aac 모드는 AAC(140 128k)를, best 모드는 opus 를 고르는지
+op = fake_info(); op["formats"] = [f for f in op["formats"] if f["format_id"] != "141"]
+op["formats"].append({"format_id": "774", "ext": "webm", "acodec": "opus", "vcodec": "none", "abr": 256.0, "quality": 4, "url": "http://x/o", "protocol": "https"})
+fmt, fn = cli_dry(op, "audio", 1); print("  audio(best, opus 256k) :", pdl.format_dry_line(fmt), "→", Path(fn).name)
+assert fmt.startswith("774|"), fmt
+args = _a
+fmt, fn = cli_dry(op, "audio", 1); print("  audio(aac, opus 256k 있어도) :", pdl.format_dry_line(fmt), "→", Path(fn).name)
+assert fmt.startswith("140|") and fn.endswith(".m4a"), (fmt, fn)
+
+fmt, fn = cli_dry(fake_info(id="O27GeOrRH9k", title="Disease (병)", uploader="Lee Juck - Topic", channel="Lee Juck - Topic",
+                            track="Disease (병)", album="The Meaning Of Solitude", tags=kw_of("O27GeOrRH9k")), "audio", 3)
+print("  audio(한글 괄호) :", pdl.format_dry_line(fmt), "→", Path(fn).name)
+assert fn == str(base / "downloads" / "03.병.m4a"), fn
+
+# quality 정보가 없어도 -S abr 덕분에 비트레이트 높은 141 이 뽑히는지
+noq = fake_info(); [f.pop("quality", None) for f in noq["formats"]]
+fmt, fn = cli_dry(noq, "audio", 1)
+print("  audio(no quality) :", pdl.format_dry_line(fmt))
+assert fmt.startswith("141|"), fmt
+
+# 특수문자 파일명 치환
+print("  ", pdl.outtmpl_for(Path("d"), 7, "100% 사랑/증오: 뭐?") % {"ext": "mkv"})
+shutil.rmtree(base.parent, ignore_errors=True)
+
+# 4) 매니페스트(classification.json) 라운드트립 · 프로젝트 탐색 · 복원 · TUI 선택 상태 — 네트워크 없음
+print("== manifest / restore / picker ==")
+root = Path(tempfile.mkdtemp())
+proj = root / "02.테스트"
+decs = [
+    pdl.Decision(index=1, id="17WFr1WGtrA", title="Light Of Morning", name="아침의 빛", channel="Samui - Topic",
+                 duration=165, mode="audio", reason="YouTube 자동 생성 음원 (- Topic)", url="https://www.youtube.com/watch?v=17WFr1WGtrA"),
+    pdl.Decision(index=2, id="oGQ6Ykwha1E", title="NBT Live", name="NBT Live", channel="NBTVEVO",
+                 duration=300, mode="video", reason="manual override", url="https://www.youtube.com/watch?v=oGQ6Ykwha1E"),
+]
+mpath = pdl.write_manifest(proj, "https://www.youtube.com/playlist?list=PLx", "테스트 목록", decs)
+assert mpath == proj / "classification.json" and mpath.exists(), mpath
+meta, items = pdl.read_manifest(proj)
+assert meta == {"url": "https://www.youtube.com/playlist?list=PLx", "title": "테스트 목록"}, meta
+assert items == decs, items
+print(f"  라운드트립 OK: '{meta['title']}' {len(items)}곡")
+
+# 구버전(리스트만 있는) 매니페스트도 읽힌다 — 01 번 재생목록이 이 형식으로 만들어졌음
+legacy = root / "01.구버전"; legacy.mkdir()
+(legacy / "classification.json").write_text(json.dumps([pdl.asdict(d) for d in decs], ensure_ascii=False), encoding="utf-8")
+meta, items = pdl.read_manifest(legacy)
+assert meta == {} and items == decs, (meta, items)
+print("  구버전 리스트 형식 OK")
+
+# 프로젝트 탐색: classification.json 을 가진 하위 폴더만, 이름순
+(root / "downloads").mkdir(); (root / "03.빈폴더").mkdir()
+found = pdl.discover_projects(root)
+assert found == [legacy, proj], found
+print(f"  discover_projects: {[p.name for p in found]}")
+
+# 복원: 재생목록 조회·분류 없이 매니페스트에 기록된 index/name/mode/url 로만 download() 를 부르고, 매니페스트는 건드리지 않는다
+before = mpath.read_bytes()
+calls = []
+_dl, _dry = pdl.download, pdl.dry_run
+pdl.download = lambda ytdlp, url, args, mode, base_dir, index, name: calls.append(("dl", url, mode, base_dir, index, name))
+pdl.dry_run = lambda ytdlp, url, args, mode, base_dir, index, name: calls.append(("dry", url, mode, base_dir, index, name)) or "(dry)"
+rargs = types.SimpleNamespace(**vars(args), dry_run=False, only=None)
+done, failed = pdl.restore("yt-dlp", rargs, proj)
+assert [d.id for d in done] == ["17WFr1WGtrA", "oGQ6Ykwha1E"] and failed == [], (done, failed)
+assert calls == [("dl", decs[0].url, "audio", proj, 1, "아침의 빛"), ("dl", decs[1].url, "video", proj, 2, "NBT Live")], calls
+assert mpath.read_bytes() == before
+calls.clear()
+done, failed = pdl.restore("yt-dlp", types.SimpleNamespace(**{**vars(rargs), "dry_run": True, "only": ["oGQ6Ykwha1E"]}), proj)
+assert [d.id for d in done] == ["oGQ6Ykwha1E"] and calls == [("dry", decs[1].url, "video", proj, 2, "NBT Live")], calls
+def boom(ytdlp, url, args, mode, base_dir, index, name):  # 한 곡 실패는 그 ID 만 failed 로 모으고 계속 진행
+    if index == 1: raise pdl.YtDlpError("exit 1")
+    calls.append(("dl", index))
+pdl.download = boom; calls.clear()
+done, failed = pdl.restore("yt-dlp", rargs, proj)
+assert [d.id for d in done] == ["oGQ6Ykwha1E"] and failed == ["17WFr1WGtrA"] and calls == [("dl", 2)], (done, failed, calls)
+pdl.download, pdl.dry_run = _dl, _dry
+print("  restore: 기록된 mode/index/name 그대로, --only·--dry-run·실패 격리 OK")
+
+# TUI 선택 상태 (curses 화면 없이 상태 전이만): 0번 행 = '전부 복원', 이하 = 프로젝트
+pk = pdl.Picker(["01.구버전", "02.테스트", "03.셋"])
+assert pk.cursor == 0 and pk.selected() == [] and not pk.all_checked
+pk.move(-1); assert pk.cursor == 0                       # 위로 넘치지 않음
+pk.move(2); pk.toggle(); assert pk.selected() == [1]     # 2번째 프로젝트 체크
+pk.move(10); assert pk.cursor == 3                       # 아래로 넘치지 않음
+pk.move(-3); pk.toggle(); assert pk.selected() == [0, 1, 2] and pk.all_checked   # '전부' 행 토글 → 전부 체크
+pk.toggle(); assert pk.selected() == [] and not pk.all_checked                    # 다시 → 전부 해제
+pk.move(1); pk.toggle(); pk.move(1); pk.toggle(); pk.move(1); pk.toggle()
+assert pk.all_checked                                     # 하나씩 다 켜도 '전부' 행이 켜진 걸로 보인다
+rows = pk.rows()
+assert len(rows) == 4 and rows[0] == (True, "전부 복원") and rows[1] == (True, "01.구버전"), rows
+assert pdl.display_width("욕망은") == 6 and pdl.display_width("abc") == 3   # 한글은 터미널 2칸 (curses 정렬용)
+print("  Picker 상태 전이 OK")
+shutil.rmtree(root, ignore_errors=True)
+
+print("\nALL OK")

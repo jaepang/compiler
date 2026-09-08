@@ -1,0 +1,217 @@
+{
+  "playlist": {
+    "url": "https://www.youtube.com/playlist?list=PLeRwSHXhNq6s",
+    "title": "욕망은 오랜 병"
+  },
+  "items": [
+    {
+      "index": 1,
+      "id": "17WFr1WGtrA",
+      "title": "Light Of Morning",
+      "name": "아침의 빛",
+      "channel": "사뮈 Samui",
+      "duration": 165,
+      "mode": "audio",
+      "reason": "YouTube 자동 생성 음원 (- Topic)",
+      "url": "https://www.youtube.com/watch?v=17WFr1WGtrA"
+    },
+    {
+      "index": 2,
+      "id": "_G0qifw8oDg",
+      "title": "Hollywood Movie Star",
+      "name": "Hollywood Movie Star",
+      "channel": "NERD CONNECTION",
+      "duration": 203,
+      "mode": "audio",
+      "reason": "YouTube 자동 생성 음원 (- Topic)",
+      "url": "https://www.youtube.com/watch?v=_G0qifw8oDg"
+    },
+    {
+      "index": 3,
+      "id": "O27GeOrRH9k",
+      "title": "Disease (병)",
+      "name": "병",
+      "channel": "Lee Juck - Topic",
+      "duration": 273,
+      "mode": "audio",
+      "reason": "YouTube 자동 생성 음원 (- Topic)",
+      "url": "https://www.youtube.com/watch?v=O27GeOrRH9k"
+    },
+    {
+      "index": 4,
+      "id": "hLg0zMfUmVo",
+      "title": "Realize",
+      "name": "Realize",
+      "channel": "Silica Gel 실리카겔",
+      "duration": 259,
+      "mode": "audio",
+      "reason": "YouTube 자동 생성 음원 (- Topic)",
+      "url": "https://www.youtube.com/watch?v=hLg0zMfUmVo"
+    },
+    {
+      "index": 5,
+      "id": "geuVSTwQEHY",
+      "title": "Agog",
+      "name": "아고그",
+      "channel": "데카당 DECADENT",
+      "duration": 212,
+      "mode": "audio",
+      "reason": "YouTube 자동 생성 음원 (- Topic)",
+      "url": "https://www.youtube.com/watch?v=geuVSTwQEHY"
+    },
+    {
+      "index": 6,
+      "id": "rFZ_gTrYr78",
+      "title": "Goodbye Seoul",
+      "name": "Goodbye Seoul",
+      "channel": "HYUKOH",
+      "duration": 200,
+      "mode": "audio",
+      "reason": "YouTube 자동 생성 음원 (- Topic)",
+      "url": "https://www.youtube.com/watch?v=rFZ_gTrYr78"
+    },
+    {
+      "index": 7,
+      "id": "1HG_O7H1NbM",
+      "title": "The Lights Behind You",
+      "name": "The Lights Behind You",
+      "channel": "SURL / 설",
+      "duration": 313,
+      "mode": "audio",
+      "reason": "YouTube 자동 생성 음원 (- Topic)",
+      "url": "https://www.youtube.com/watch?v=1HG_O7H1NbM"
+    },
+    {
+      "index": 8,
+      "id": "yzgbi62XYtM",
+      "title": "nouvelle vague",
+      "name": "nouvelle vague",
+      "channel": "wave to earth",
+      "duration": 230,
+      "mode": "audio",
+      "reason": "YouTube 자동 생성 음원 (- Topic)",
+      "url": "https://www.youtube.com/watch?v=yzgbi62XYtM"
+    },
+    {
+      "index": 9,
+      "id": "gb3MnRuDzz4",
+      "title": "Stranger",
+      "name": "이방인",
+      "channel": "새소년 SE SO NEON",
+      "duration": 160,
+      "mode": "audio",
+      "reason": "YouTube 자동 생성 음원 (- Topic)",
+      "url": "https://www.youtube.com/watch?v=gb3MnRuDzz4"
+    },
+    {
+      "index": 10,
+      "id": "eqQBDh5Jb6Q",
+      "title": "Loosing Control (Loosing Control)",
+      "name": "Loosing Control",
+      "channel": "OFFICIAL_NELL",
+      "duration": 281,
+      "mode": "audio",
+      "reason": "YouTube 자동 생성 음원 (- Topic)",
+      "url": "https://www.youtube.com/watch?v=eqQBDh5Jb6Q"
+    },
+    {
+      "index": 11,
+      "id": "fsB1OzYy9uI",
+      "title": "New Born",
+      "name": "New Born",
+      "channel": "Muse",
+      "duration": 363,
+      "mode": "audio",
+      "reason": "YouTube 자동 생성 음원 (- Topic)",
+      "url": "https://www.youtube.com/watch?v=fsB1OzYy9uI"
+    },
+    {
+      "index": 12,
+      "id": "oGQ6Ykwha1E",
+      "title": "Nothing But Thieves - Ban All the Music (Live at The O2)",
+      "name": "Nothing But Thieves - Ban All the Music (Live at The O2)",
+      "channel": "Nothing But Thieves",
+      "duration": 262,
+      "mode": "video",
+      "reason": "manual override",
+      "url": "https://www.youtube.com/watch?v=oGQ6Ykwha1E"
+    },
+    {
+      "index": 13,
+      "id": "2mXNRsyTitA",
+      "title": "Faint",
+      "name": "Faint",
+      "channel": "Linkin Park",
+      "duration": 162,
+      "mode": "audio",
+      "reason": "YouTube 자동 생성 음원 (- Topic)",
+      "url": "https://www.youtube.com/watch?v=2mXNRsyTitA"
+    },
+    {
+      "index": 14,
+      "id": "9wV9_je85DE",
+      "title": "Muse - Stockholm Syndrome [Live From Wembley Stadium]",
+      "name": "Muse - Stockholm Syndrome [Live From Wembley Stadium]",
+      "channel": "Muse",
+      "duration": 488,
+      "mode": "video",
+      "reason": "manual override",
+      "url": "https://www.youtube.com/watch?v=9wV9_je85DE"
+    },
+    {
+      "index": 15,
+      "id": "8YcHut06638",
+      "title": "Strawberry Moon",
+      "name": "Strawberry Moon",
+      "channel": "The Poles official",
+      "duration": 329,
+      "mode": "audio",
+      "reason": "YouTube 자동 생성 음원 (- Topic)",
+      "url": "https://www.youtube.com/watch?v=8YcHut06638"
+    },
+    {
+      "index": 16,
+      "id": "sIJHYWDrJeU",
+      "title": "Gills",
+      "name": "Gills",
+      "channel": "쏜애플 / THORNAPPLE",
+      "duration": 315,
+      "mode": "audio",
+      "reason": "YouTube 자동 생성 음원 (- Topic)",
+      "url": "https://www.youtube.com/watch?v=sIJHYWDrJeU"
+    },
+    {
+      "index": 17,
+      "id": "ZVgHPSyEIqk",
+      "title": "Let Down (Remastered)",
+      "name": "Let Down (Remastered)",
+      "channel": "Radiohead",
+      "duration": 299,
+      "mode": "audio",
+      "reason": "YouTube 자동 생성 음원 (- Topic)",
+      "url": "https://www.youtube.com/watch?v=ZVgHPSyEIqk"
+    },
+    {
+      "index": 18,
+      "id": "E8-P833ptPk",
+      "title": "NELL - Movie (Shoegaze Inst) [Unofficial]",
+      "name": "NELL - Movie (Shoegaze Inst) [Unofficial]",
+      "channel": "빈도시",
+      "duration": 408,
+      "mode": "audio",
+      "reason": "manual override",
+      "url": "https://www.youtube.com/watch?v=E8-P833ptPk"
+    },
+    {
+      "index": 19,
+      "id": "gzXi50Hbr_M",
+      "title": "New born",
+      "name": "New born",
+      "channel": "HYUKOH",
+      "duration": 526,
+      "mode": "audio",
+      "reason": "YouTube 자동 생성 음원 (- Topic)",
+      "url": "https://www.youtube.com/watch?v=gzXi50Hbr_M"
+    }
+  ]
+}
