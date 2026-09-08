@@ -71,6 +71,55 @@
       "codec": "mp3",
       "added": "2026-09-09",
       "note": "Sounds of Waves by MindMist, 15분, 균일. 트루피크 +0.9dBTP → 트랙 볼륨 -10dB 안팎 권장"
+    },
+    {
+      "id": "film-projector-super8-silma-pixabay-19602",
+      "kind": "loop",
+      "category": "film",
+      "tags": [
+        "film",
+        "projector",
+        "super8",
+        "recording",
+        "loop"
+      ],
+      "file": "film/film-projector-super8-silma-pixabay-19602.wav",
+      "source": "pixabay",
+      "source_id": "19602",
+      "page_url": "https://pixabay.com/sound-effects/technology-silma-s211-super8-projector-19602/",
+      "download_url": "",
+      "license": "Pixabay Content License",
+      "attribution_required": false,
+      "attribution": "",
+      "duration": 348.0,
+      "sample_rate": 48000,
+      "codec": "pcm_s24le",
+      "added": "2026-09-09",
+      "note": "Silma S211 Super8 실녹음(10:19, freesound_community) 중 1.0-349.0s 균일(-23dB) 구간만 48k/24bit WAV 로. 복원: 페이지에서 mp3 받아 같은 구간 트림. 뒤 구간(349s~)은 -26dB 로 3dB 낮음"
+    },
+    {
+      "id": "film-projector-vintage-mixkit-1441",
+      "kind": "loop",
+      "category": "film",
+      "tags": [
+        "film",
+        "projector",
+        "vintage",
+        "loop"
+      ],
+      "file": "film/film-projector-vintage-mixkit-1441.wav",
+      "source": "mixkit",
+      "source_id": "1441",
+      "page_url": "https://mixkit.co/free-sound-effects/movie-projector/",
+      "download_url": "https://assets.mixkit.co/active_storage/sfx/1441/1441.wav",
+      "license": "Mixkit Sound Effects Free License",
+      "attribution_required": false,
+      "attribution": "",
+      "duration": 24.0,
+      "sample_rate": 48000,
+      "codec": "pcm_s24le",
+      "added": "2026-09-09",
+      "note": "Vintage film projector working. 원본 24.98s 의 뒤 ~1s 무음을 잘라 24.0s, 48k/24bit. 1.5s 사이클 반복 합성"
     }
   ]
 }
