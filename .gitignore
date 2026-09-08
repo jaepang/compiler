@@ -21,3 +21,9 @@ build/
 
 # GarageBand 프로젝트 (패키지 폴더, 용량 큼) — 프로젝트 폴더 안에 두되 커밋하지 않음. 믹스는 Share > Export 로 build/daw/mix.wav 에
 *.band
+
+# 효과음 라이브러리 — 오디오는 무시, 출처·라이선스 매니페스트만 커밋 (.claude/skills/sfx-collect)
+sfx/*
+!sfx/manifest.json
+# 스킬 평가 작업 폴더
+.claude/skills/*-workspace/

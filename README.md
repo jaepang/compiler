@@ -44,3 +44,7 @@ python3 build_daw.py 01.욕망은오랜병
 - GarageBand 에서 간격·트림·볼륨·페이드 편집 → Share > Export Song to Disk (WAV, 48kHz) → `build/daw/mix.wav`
 - `python3 build_timeline.py 01.욕망은오랜병 --audio build/daw/mix.wav` — GarageBand 는 마커를 내보내지 못하므로 믹스에서 곡 경계를 복원한다(원곡 중간 라우드니스 곡선을 믹스에서 상관으로 찾아 정렬한 뒤 두 곡선이 같아지는 구간으로 시작·끝을 정함. 순서 변경·볼륨 변경·트림·간격 0 에 강함 — 실곡 19곡 91분 믹스에서 오차 0.1초 이내). 결과는 `build/daw/cues.json` 에 저장되고, 점수가 낮은 곡은 손으로 고쳐 `--cues build/daw/cues.json` 으로 넘길 수 있다. 미리 보기만 하려면 `python3 build_daw.py DIR --align build/daw/mix.wav`.
 - Resolve 템플릿은 A1 = mix 한 클립, V1 = 커버/무음 영상을 곡 경계에 맞춰(영상 트림 반영), 마커·SRT·챕터도 같은 경계. 테스트: `python3 test_build_daw.py`
+
+## 효과음 (`sfx/`)
+
+LP 바늘·필름 프로젝터 루프·파도 같은 효과음은 `.claude/skills/sfx-collect` 스킬(ego-browser 로 Mixkit·Pixabay·Freesound 검색·다운로드)로 받아 `sfx/<category>/` 에 두고 `sfx/manifest.json` 에 출처·라이선스·크레딧을 기록한다. 오디오는 gitignore, 매니페스트만 커밋. `python3 .claude/skills/sfx-collect/scripts/sfx.py list|credits|restore|check`.

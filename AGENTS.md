@@ -21,6 +21,8 @@ compiler/
     classification.json                    영상별 분류·파일명 결과표 = 복원 매니페스트 {"playlist": {url,title}, "items": [...]} — 커밋 대상
     build/                                 build_timeline.py 산출물 — 절대경로 포함, 매니페스트에서 재생성 (gitignore)
     *.band                                 GarageBand 프로젝트 — 여기(프로젝트 폴더)에 두고 편집하되 gitignore. 내보낸 믹스는 build/daw/mix.wav
+  sfx/                  효과음 라이브러리 (영상 여러 개에 재사용). 오디오는 gitignore, sfx/manifest.json(출처·라이선스·크레딧)만 커밋
+  .claude/skills/sfx-collect/  효과음 수집 스킬 — ego-browser 로 Mixkit·Pixabay·Freesound 에서 찾아 받고 sfx.py 로 등록. 사이트별 레시피는 references/sites.md
 ```
 
 새 재생목록을 추가할 때는 `02.{이름}/` 처럼 번호를 이어서 만들고, `python3 playlist_dl.py <URL> --out 02.{이름}` 으로 받는다.
@@ -134,6 +136,14 @@ python3 playlist_dl.py --cookies-from-browser chrome             # 다운로드
 - audio 17곡: 16곡 AAC 256k, 18 빈도시 인스트만 128k(그 영상의 AAC 최고치)
 - 분류 규칙을 바꾸거나 오버라이드를 추가해 다시 받을 때는 archive_*.txt 에서 해당 ID 줄을 지워야 재다운로드된다.
 - 2026-09-08 `--rename` 으로 19곡을 `{nn}.{아티스트}-{곡명}` 규칙으로 소급 적용 (재다운로드 없이 rename, 매니페스트 갱신).
+
+## 효과음 (`sfx/`, `.claude/skills/sfx-collect`)
+
+LP 바늘·필름 프로젍터 루프·파도 같은 사운드스케이프를 영상에 깔고 싶다는 요청(2026-09-09). 무료 사이트에서 ego-browser 로 받아 레포 루트 `sfx/<category>/` 에 두고 `sfx/manifest.json` 에 출처·라이선스·크레딧을 기록한다. 정책: 무표기(Mixkit·Pixabay·CC0) 우선, CC BY 는 크레딧 기록, NC 거절, 로그인 없는 사이트 우선.
+
+- `python3 .claude/skills/sfx-collect/scripts/sfx.py list|credits|restore|check` — 매니페스트만 있으면 다른 머신에서 `restore`(직링크 있는 항목) 로 다시 받는다. Pixabay 는 브라우저 다운로드만 되므로 스킬로 다시 받는다.
+- 검증된 사실: Mixkit 은 `assets.mixkit.co/active_storage/sfx/<id>/<id>.wav` 직링크(WAV 만), Pixabay 는 쿠키 모달 거절 후 `Page.setDownloadBehavior` + "Free download" 클릭으로 mp3, Freesound 는 CC0 필터 검색·`-hq.mp3` 프리뷰는 비로그인, 원본은 로그인 handoff.
+- 아직 안 한 것: description.md 크레딧 섹션에 `sfx.py credits` 결과를 자동으로 붙이는 연결.
 
 ## 남은 것 / 메모
 
