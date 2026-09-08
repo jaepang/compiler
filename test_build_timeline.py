@@ -121,7 +121,8 @@ assert frames_of(seq.get("duration")) == 180
 conn = [e for e in spine[0] if e.tag in ("video", "asset-clip")]
 assert [e.tag for e in conn] == ["video", "asset-clip", "video"] and all(e.get("lane") == "1" for e in conn), [(e.tag, e.get("lane")) for e in conn]
 assert [frames_of(e.get("offset")) for e in conn] == [t.start for t in res.tracks]
-assert [frames_of(e.get("duration")) for e in conn] == [t.frames for t in res.tracks]
+assert [frames_of(e.get("duration")) for e in conn] == [round((d1 + 0.5) * 30), 30, 30], [e.get("duration") for e in conn]   # 커버는 다음 곡/믹스 끝까지(hold), 영상은 곡 길이
+assert [t.hold for t in res.tracks] == [round((d1 + 0.5) * 30), 0, 30]
 v = assets[conn[1].get("ref")]                                                                   # 영상 곡: 무음 mp4, 트림 반영
 assert v.get("hasAudio") == "0" and src_path(v).parent.name == "video" and src_path(v).suffix == ".mp4", v.attrib
 assert conn[1].get("start") == "8/30s", conn[1].get("start")                                     # 0.25s → 8프레임

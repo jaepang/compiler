@@ -13,7 +13,7 @@ build_daw.py — GarageBand 에서 음원을 선편집하기 위한 소스 준�
 흐름: GarageBand 에 WAV 를 순서대로 배치·편집(간격·트림·볼륨·페이드) → Share > Export Song to Disk (WAV/AIFF, 48kHz) → daw/mix.wav
   → python3 build_timeline.py DIR --audio build/daw/mix.wav
   GarageBand 는 마커를 내보내지 못하므로 곡 경계는 믹스에서 복원한다: 원곡 중간 부분의 라우드니스 곡선(ebur128, 0.1s)을 믹스에서
-  상관으로 찾아 시작 시각을 얻고(순서 변경·볼륨 변경·앞 트림에 강함), 곡 사이 무음(silencedetect)으로 시작·끝을 다듬는다.
+  상관으로 찾아 곡 전체를 정렬한 뒤, 두 곡선이 같아지는 구간으로 시작(앞 트림)·끝을 정한다 (순서 변경·볼륨 변경·트림·간격 0 에 강함).
 
 의존성: ffmpeg/ffprobe. 표준 라이브러리만 사용.
 """
@@ -34,9 +34,12 @@ from build_timeline import BuildError, locate_media, probe, track_label
 from playlist_dl import Decision, read_manifest, safe_stem
 
 TEMPLATE_SEC = 15.0  # 매칭에 쓰는 원곡 구간 길이 (곡 중앙)
-SILENCE_DB, SILENCE_MIN = -45.0, 0.25  # 곡 사이 무음 판정
-SNAP_SEC = 1.5  # 검출 위치 근처 이 범위 안의 무음 경계로 시작/끝을 다듬는다
-TRIM_MAX_SEC = 20.0  # 앞 트림 추정 범위
+MATCH_WIN_SEC = 2.0  # 시작/끝 판정 창
+MATCH_DB = 4.0  # 정렬된 믹스·원곡 곡선의 창 평균 차이가 이 아래면 "같은 소리"
+EDGE_DB = 3.0  # 경계 샘플 자체는 이 안이어야 한다 (창 평균만 보면 첫 샘플의 무음이 뒤 샘플에 상쇄돼 0.4s 이르게 잡힌다)
+FLOOR_DB = -70.0  # ebur128 이 무음/창 미충족 구간에 주는 바닥값 (-inf 를 이걸로 바닥 처리)
+MOMENTARY_SEC = 0.4  # ebur128 Momentary 창 길이. 소리가 시작된 뒤 이만큼 지나야 곡선이 온전해지므로 경계에서 되돌린다
+REFINE = 6  # 템플릿 정렬 미세 보정 범위 (샘플, 0.1s 단위)
 
 
 @dataclass
@@ -84,7 +87,6 @@ def _fresh(dst: Path, src: Path) -> bool:
 
 
 _EBUR = re.compile(r"t:\s*([\d.]+)\s+TARGET:\S+\s+LUFS\s+M:\s*(-?[\d.]+|-inf|nan)")
-_SIL_START, _SIL_END = re.compile(r"silence_start:\s*(-?[\d.]+)"), re.compile(r"silence_end:\s*(-?[\d.]+)")
 
 
 def loudness_envelope(path: Path, ffmpeg: str) -> tuple[list[float], list[float]]:
@@ -98,16 +100,6 @@ def loudness_envelope(path: Path, ffmpeg: str) -> tuple[list[float], list[float]
     if len(ts) < 2:
         raise BuildError(f"라우드니스 곡선을 얻지 못했습니다: {path.name}")
     return ts, vals
-
-
-def silence_ranges(path: Path, ffmpeg: str) -> list[tuple[float, float]]:
-    proc = subprocess.run([ffmpeg, "-nostats", "-i", str(path), "-af", f"silencedetect=noise={SILENCE_DB}dB:d={SILENCE_MIN}", "-f", "null", "-"],
-                          capture_output=True, text=True)
-    starts = [float(x) for x in _SIL_START.findall(proc.stderr)]
-    ends = [float(x) for x in _SIL_END.findall(proc.stderr)]
-    if len(ends) < len(starts):  # 파일 끝까지 무음
-        ends.append(probe(path)["duration"])
-    return list(zip(starts, ends))
 
 
 # --------------------------------------------------------------------------- 정렬 (곡 경계 복원)
@@ -151,66 +143,60 @@ def _best_match(mix: list[float], tmpl: list[float]) -> tuple[int, float]:
 
 
 def align_cues(mix: Path, tracks: list[DawTrack], ffmpeg: str | None = None) -> list[Cue]:
-    """GarageBand 가 내보낸 믹스에서 각 곡의 시작·길이·앞 트림을 찾는다. 결과는 타임라인 순서."""
+    """GarageBand 가 내보낸 믹스에서 각 곡의 시작·길이·앞 트림을 찾는다. 결과는 타임라인 순서.
+
+    1) 원곡 중앙 TEMPLATE_SEC 의 라우드니스 곡선을 믹스에서 상관으로 찾아 곡 전체를 믹스 시간축에 정렬한다.
+    2) 정렬된 두 곡선의 차이 D=|믹스-원곡-이득| 을 보고, 앞에서부터 MATCH_WIN_SEC 창 평균 D 가 MATCH_DB 아래로
+       처음 들어오는 지점을 시작(= 앞 트림), 뒤에서부터 같은 조건의 마지막 지점을 끝으로 잡는다.
+       무음 감지에 의존하지 않으므로 조용한 인트로/아웃트로나 간격 0 에도 흔들리지 않는다."""
     ffmpeg_exe = shutil.which(ffmpeg or "ffmpeg")
     if not ffmpeg_exe:
         raise BuildError("ffmpeg 를 찾을 수 없습니다")
     mix = Path(mix)
     mt, menv = loudness_envelope(mix, ffmpeg_exe)
-    step = mt[1] - mt[0]
-    mix_end = probe(mix)["duration"]
-    sil = silence_ranges(mix, ffmpeg_exe)
+    step, n_mix = mt[1] - mt[0], len(menv)
+    W = max(3, int(MATCH_WIN_SEC / step))
 
-    hits: list[tuple[DawTrack, float, float]] = []  # (곡, 검출 시작, 점수)
+    cues: list[Cue] = []
     for t in tracks:
         st, senv = loudness_envelope(t.wav, ffmpeg_exe)
         n = len(senv)
-        span = min(n, max(5, int(TEMPLATE_SEC / step)))
-        a = max(0, (n - span) // 2)  # 곡 중앙
-        tmpl = senv[a:a + span]
-        p, r = _best_match(menv, tmpl)
-        hits.append((t, mt[p] - st[a], r))
-    hits.sort(key=lambda h: h[1])
+        span = max(5, min(n // 2, int(TEMPLATE_SEC / step)))  # 곡 중앙 50% (최대 TEMPLATE_SEC) — 조용한 인트로·트림된 앞부분·창 미충족 구간을 피한다
+        a = max(0, (n - span) // 2)
+        p, r = _best_match(menv, senv[a:a + span])
+        diffs = sorted(menv[p + i] - senv[a + i] for i in range(span))
+        gain = diffs[span // 2]
 
-    def snap_end(x: float) -> float | None:  # x 근처에서 끝나는 무음의 끝
-        return next((s1 for s0, s1 in sil if abs(s1 - x) <= SNAP_SEC or s0 <= x <= s1), None)
+        def d_at(base_: int, i: int) -> float:
+            j = base_ + i
+            if not 0 <= j < n_mix:
+                return 99.0
+            if senv[i] <= FLOOR_DB + 1 and menv[j] <= FLOOR_DB + 1:
+                return 0.0  # 둘 다 디지털 무음 — 이득 보정을 적용하면 |gain| 만큼 어긋난 것처럼 보이므로 같은 것으로 본다
+            return abs(menv[j] - senv[i] - gain)
 
-    def snap_start(x: float) -> float | None:  # x 근처에서 시작하는 무음의 시작
-        return next((s0 for s0, s1 in sil if abs(s0 - x) <= SNAP_SEC or s0 <= x <= s1), None)
+        # 템플릿 상관은 0.1~0.5s 어긋날 수 있다 → ±REFINE 범위에서 곡 전체 '일치 샘플 수' 가 최대인 정렬로 보정
+        base = max(range(p - a - REFINE, p - a + REFINE + 1),
+                   key=lambda b: sum(1 for i in range(n) if senv[i] > FLOOR_DB + 5 and d_at(b, i) < EDGE_DB))
 
-    starts: list[float] = []
-    for t, detected, _ in hits:
-        snapped = snap_end(detected)
-        starts.append(max(0.0, snapped if snapped is not None else detected))
+        def d(i: int) -> float:
+            return d_at(base, i)
 
-    def trim_offset(t: DawTrack, start: float, fallback: float) -> float:
-        """실제 시작 지점의 믹스 곡선과 원곡 앞부분을 0.1s 씩 밀어 비교 → 원곡에서 잘린 앞 길이"""
-        st, senv = loudness_envelope(t.wav, ffmpeg_exe)
-        skip = int(0.5 / step) + 1  # ebur128 400ms 창이 채워지는 시작 램프는 비교에서 뺀다
-        p0 = min(range(len(mt)), key=lambda i: abs(mt[i] - start)) + skip
-        win = min(int(8.0 / step), len(senv) // 2, len(menv) - p0)
-        if win < 5:
-            return fallback
-        seg = menv[p0:p0 + win]
-        best_o, best_r = 0, -2.0
-        for o in range(0, min(int(TRIM_MAX_SEC / step), len(senv) - win - skip) + 1):
-            r = _pearson(seg, senv[o + skip:o + skip + win])
-            if r > best_r:
-                best_r, best_o = r, o
-        return best_o * step if best_r >= 0.5 else fallback
+        def matches(i: int) -> bool:  # [i, i+W) 창 평균 차이가 임계 아래
+            return sum(d(k) for k in range(i, i + W)) / W < MATCH_DB
 
-    cues: list[Cue] = []
-    for i, (t, detected, score) in enumerate(hits):
-        start = starts[i]
-        offset = trim_offset(t, start, max(0.0, start - detected))
-        nominal_end = detected + t.length
-        end = snap_start(nominal_end)
-        end = nominal_end if end is None else end
-        if i + 1 < len(hits):
-            end = min(end, starts[i + 1])
-        end = min(end, mix_end)
-        cues.append(Cue(t.decision.index, t.label, start, max(0.1, end - start), offset, t.wav, score))
-    return cues
+        # 곡 앞 MOMENTARY_SEC 는 창이 채워지기 전이라 -70 이 찍히는 인공 구간 → 탐색에서 뺀다 (믹스의 무음과 "일치"해 보이는 것을 막음).
+        # 조용한 인트로는 둘 다 조용해서 d 가 작으니 정상적으로 시작으로 잡힌다.
+        i_min = min(a, int(round(MOMENTARY_SEC / step)))
+        i0 = next((i for i in range(i_min, a + 1) if d(i) < EDGE_DB and matches(i)), a)
+        i1 = next((i for i in range(n - W, a + span - W - 1, -1) if d(i + W - 1) < EDGE_DB and matches(i)), a + span - W) + W  # 마지막으로 맞는 창의 끝 (exclusive)
+        # 샘플 i 의 창은 [st[i]-MOMENTARY, st[i]] 를 본다. 첫 탐색 샘플에서 바로 맞으면 트림 없음(0), 아니면 창 시작이 실제 소리 시작
+        onset = 0.0 if i0 == i_min else max(0.0, st[i0] - MOMENTARY_SEC)
+        origin = base * step  # 원곡 시각 0 이 놓이는 믹스 시각 (두 곡선의 시간축이 같은 격자라 st[0] == mt[0])
+        start = max(0.0, origin + onset)
+        end = min(origin + st[i1 - 1], mt[-1])
+        cues.append(Cue(t.decision.index, t.label, start, max(0.1, end - start), onset, t.wav, r))
+    return sorted(cues, key=lambda c: c.start)
 
 
 def save_cues(path: Path, cues: list[Cue]) -> None:

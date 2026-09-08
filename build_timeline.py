@@ -57,6 +57,7 @@ class Track:
     cover: Path | None  # 음원 곡의 배경 정지 이미지
     provider: str  # "Provided to YouTube by X" 의 X, 없으면 ""
     src_start: int = 0  # 영상 곡의 소스 시작 프레임 (mix 모드에서 앞 트림 반영)
+    hold: int = 0  # 커버 정지 이미지를 화면에 두는 프레임 (0 이면 frames). mix 모드에선 다음 곡 시작까지 채워 V1 이 비지 않게
 
 
 @dataclass
@@ -174,7 +175,7 @@ def write_fcpxml(path: Path, title: str, tracks: list[Track], fps: int, gap_fram
                                      lane="1", offset=offset, name=t.label, start=frame_time(t.src_start, fps), duration=dur)
             else:
                 clip = ET.SubElement(parent, "video", ref=asset(t.cover, duration="0s", hasVideo="1", hasAudio="0"),
-                                     lane="1", offset=offset, name=t.label, start="0s", duration=dur)
+                                     lane="1", offset=offset, name=t.label, start="0s", duration=frame_time(t.hold or t.frames, fps))
             ET.SubElement(clip, "marker", start=frame_time(t.src_start, fps), duration=frame_time(1, fps), value=f"{t.decision.index:02d} {t.label}")
         ET.indent(root)
         path.write_text('<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE fcpxml>\n' + ET.tostring(root, encoding="unicode") + "\n", encoding="utf-8")
@@ -284,6 +285,10 @@ def build(project_dir: Path | str, fps: int = 30, gap: float = 0.0, ffprobe: str
             tracks.append(make_track(d, f, max(1, round(c.length * fps)), round(c.start * fps), round(c.offset * fps),
                                      video_dir / (safe_stem(d.index, d.name) + f.suffix)))
         total = max([mix_frames, *(t.start + t.frames for t in tracks)])
+        for i, tr in enumerate(tracks):  # 커버 이미지는 다음 곡(또는 믹스 끝)까지
+            if tr.kind == "audio":
+                nxt = tracks[i + 1].start if i + 1 < len(tracks) else total
+                tr.hold = max(tr.frames, nxt - tr.start)
         mix = (mix_path, mix_frames)
     else:
         pos = 0

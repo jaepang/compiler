@@ -68,11 +68,12 @@ python3 build_timeline.py 01.욕망은오랜병 --audio build/daw/mix.wav [--cue
 ```
 
 - `build_daw.build`: 19곡 48kHz/24bit WAV(영상 곡은 오디오만, ~1.5GB), 영상 곡은 `-map 0:v:0 -an -c copy` 로 무음 mp4(임베드 커버 png 스트림 제외). 소스 mtime 보다 새 산출물은 건너뛴다.
-- `align_cues(mix, tracks)`: ffmpeg `ebur128` 의 100ms Momentary 라우드니스 곡선으로 원곡 중앙 15초를 믹스에서 피어슨 상관으로 찾는다(뭉치 평균으로 거친 탐색 → 근처 정밀 탐색이라 1.5시간 믹스도 수십 초). `silencedetect`(-45dB, 0.25s)로 시작·끝을 무음 경계에 맞추고, 앞 트림은 확정된 시작 지점의 믹스 곡선과 원곡 앞부분을 0.1s 씩 밀어 비교해 추정한다(ebur128 400ms 창이 채워지는 시작 0.5s 는 비교에서 제외 — 안 빼면 트림이 0 쪽으로 끌린다). 결과 `Cue(index, label, start, length, offset, file, score)`, 점수 < 0.6 이면 CLI 가 표시.
-- 곡 사이 간격이 없으면 무음 보정이 빠져 경계가 ±0.5s 정도 흔들릴 수 있다 → GarageBand 에서 곡 사이에 0.5초 이상 띄우는 것을 권장. 두 곡의 라우드니스 곡선이 아주 비슷하면(같은 곡 반복 등) 오인 가능 → cues.json 을 손으로 고쳐 `--cues`.
+- `align_cues(mix, tracks)`: ffmpeg `ebur128` 의 100ms Momentary 라우드니스 곡선(dB, 무음은 -70 바닥)을 쓴다. (1) 원곡 **중앙 50%(최대 15초)** 를 템플릿으로 믹스에서 피어슨 상관 탐색(뭉치 평균 거친 탐색 → 근처 정밀 탐색, 91분 믹스 19곡에 약 11초). 곡 전체를 템플릿으로 쓰면 조용한 인트로·트림된 앞부분이 상관을 왜곡해 0.5초 어긋난다. (2) 템플릿 위치 ±0.6초에서 곡 전체의 '일치 샘플 수' 가 최대인 정렬로 미세 보정. (3) 정렬된 두 곡선의 차이 D=|믹스-원곡-이득| 로 경계를 잡는다 — 앞에서부터 2초 창 평균 D<4dB 이고 경계 샘플 D<3dB 인 첫 지점이 시작(=앞 트림), 뒤에서부터 같은 조건의 마지막 지점이 끝. 무음 감지(silencedetect)는 쓰지 않는다(조용한 인트로/아웃트로를 무음으로 먹어 최대 11초 잘랐음).
+- 함정 세 가지(전부 테스트로 고정): ebur128 은 t=0.1 부터 값을 내되 0.4초 창이 채워지기 전엔 -70 이라 곡 앞 0.4초는 탐색에서 제외하고 시작 시각은 창 시작(st-0.4)으로 되돌린다 / 둘 다 -70 바닥이면 이득 보정을 적용하지 말고 같은 것으로 본다(안 그러면 볼륨을 바꾼 곡의 무음 인트로가 |gain| 만큼 어긋나 보임) / 조용한 인트로는 둘 다 조용해 정상적으로 일치하므로 "들릴 만큼 커야 한다" 같은 조건을 넣으면 시작이 늦어진다.
+- 검증(2026-09-08): 실제 19곡 WAV 로 GarageBand 결과를 흉내 낸 91분 믹스(순서 두 쌍 교환, 곡 사이 1초, 1번 앞 3초 트림, 2번 볼륨 0.6) → 순서 19/19, 시작·길이 오차 최대 0.1초, 트림 2.9/3.0. 실제 GarageBand 내보내기(페이드·리버브 등 가공 포함)로는 아직 안 돌려봤다. 두 곡의 라우드니스 곡선이 아주 비슷하면(같은 곡 반복 등) 오인 가능 → cues.json 을 손으로 고쳐 `--cues`.
 - mix 모드 `build_timeline`: `--audio` 만 주면 `build_daw.build` → `align_cues` → `build/daw/cues.json` 저장, `--cues` 를 주면 그 파일을 쓴다. FCPXML 은 스파인 = mix 한 `<asset-clip>`(A1), 곡마다 `lane="1"` 연결 클립(커버 `<video>` 또는 무음 mp4 `<asset-clip start=트림>`) + 마커. SRT·description 도 큐 기준. `--gap` 은 무시.
 - 순환 import 주의: `build_daw` 가 `build_timeline` 을 import 하므로 `build_timeline.build` 는 `build_daw` 를 함수 안에서 지연 import 한다.
-- **미검증**: 실제 GarageBand 믹스로 `align_cues` 를 돌린 적은 아직 없다(합성 믹스 테스트만). mix 모드 FCPXML(스파인 오디오 + lane 1 영상)을 Resolve 가 A1/V1 로 받는지도 첫 import 때 확인. 어긋나면 `align_cues` 의 상수(TEMPLATE_SEC·SILENCE_DB·SNAP_SEC) 또는 `write_fcpxml` 의 mix 분기만 고치면 된다.
+- **미검증**: 실제 GarageBand 내보내기로 `align_cues` 검증, mix 모드 FCPXML(스파인 오디오 + lane 1 영상, 커버는 다음 곡까지 `hold`)을 Resolve 가 A1/V1 로 받는지 — 첫 import 때 확인. 어긋나면 `align_cues` 상수(TEMPLATE_SEC·MATCH_DB·EDGE_DB·REFINE) 또는 `write_fcpxml` 의 mix 분기만 고치면 된다.
 
 ## 실행 (반드시 로컬 터미널 — 프리미엄 쿠키가 Chrome 에 있음)
 

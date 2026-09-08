@@ -42,5 +42,5 @@ python3 build_daw.py 01.욕망은오랜병
 
 - `build/daw/audio/{nn}.{어간}.wav`(19곡 48kHz/24bit, 영상 곡은 오디오만) 와 `build/daw/video/`(영상 곡을 무음으로) 를 만들고 순서표를 출력한다. GarageBand 는 mp4 를 받지 않으니 WAV 를 순서대로 끌어다 놓는다.
 - GarageBand 에서 간격·트림·볼륨·페이드 편집 → Share > Export Song to Disk (WAV, 48kHz) → `build/daw/mix.wav`
-- `python3 build_timeline.py 01.욕망은오랜병 --audio build/daw/mix.wav` — GarageBand 는 마커를 내보내지 못하므로 믹스에서 곡 경계를 복원한다(원곡 중간 라우드니스 곡선을 믹스에서 상관으로 찾고 곡 사이 무음으로 다듬음. 순서 변경·볼륨 변경·앞 트림에 강함). 결과는 `build/daw/cues.json` 에 저장되고, 점수가 낮은 곡은 손으로 고쳐 `--cues build/daw/cues.json` 으로 넘길 수 있다. 미리 보기만 하려면 `python3 build_daw.py DIR --align build/daw/mix.wav`.
+- `python3 build_timeline.py 01.욕망은오랜병 --audio build/daw/mix.wav` — GarageBand 는 마커를 내보내지 못하므로 믹스에서 곡 경계를 복원한다(원곡 중간 라우드니스 곡선을 믹스에서 상관으로 찾아 정렬한 뒤 두 곡선이 같아지는 구간으로 시작·끝을 정함. 순서 변경·볼륨 변경·트림·간격 0 에 강함 — 실곡 19곡 91분 믹스에서 오차 0.1초 이내). 결과는 `build/daw/cues.json` 에 저장되고, 점수가 낮은 곡은 손으로 고쳐 `--cues build/daw/cues.json` 으로 넘길 수 있다. 미리 보기만 하려면 `python3 build_daw.py DIR --align build/daw/mix.wav`.
 - Resolve 템플릿은 A1 = mix 한 클립, V1 = 커버/무음 영상을 곡 경계에 맞춰(영상 트림 반영), 마커·SRT·챕터도 같은 경계. 테스트: `python3 test_build_daw.py`
