@@ -91,11 +91,11 @@
       "license": "Pixabay Content License",
       "attribution_required": false,
       "attribution": "",
-      "duration": 348.0,
+      "duration": 318.0,
       "sample_rate": 48000,
       "codec": "pcm_s24le",
       "added": "2026-09-09",
-      "note": "Silma S211 Super8 실녹음(10:19, freesound_community) 중 1.0-349.0s 균일(-23dB) 구간만 48k/24bit WAV 로. 복원: 페이지에서 mp3 받아 같은 구간 트림. 뒤 구간(349s~)은 -26dB 로 3dB 낮음"
+      "note": "Silma S211 Super8 실녹음(10:19, freesound_community) 중 31.0-349.0s 구간을 48k/24bit WAV 로 (앞 30초에 사람 목소리가 있어 제외 — 2026-09-09). 복원: 페이지에서 mp3 받아 같은 구간 트림. 349s 이후는 -26dB 로 3dB 낮음"
     },
     {
       "id": "film-projector-vintage-mixkit-1441",
