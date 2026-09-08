@@ -9,12 +9,15 @@ YouTube 재생목록을 yt-dlp 로 내려받아 **유튜브 영상 제작 소스
 compiler/
   playlist_dl.py        메인 스크립트 (yt-dlp CLI 를 subprocess 로 호출, pip yt_dlp 모듈 안 씀)
   test_offline.py       네트워크 없이 분류·파일명·yt-dlp 인자 검증 (python3 test_offline.py)
+  build_timeline.py     매니페스트 → DaVinci Resolve 용 build/ (timeline.fcpxml·tracklist.srt·description.md·covers/) 생성
+  test_build_timeline.py  ffmpeg 로 초소형 미디어를 합성해 build_timeline 검증 (python3 test_build_timeline.py)
   fixture_meta.json     19곡 실제 메타데이터 (제목/채널/설명/태그/기대 파일명) — 테스트용
   README.md, requirements.txt(선택 의존성 pillow 만)
   01.욕망은오랜병/       재생목록 1개 = 폴더 1개, "{nn}.{재생목록이름}" 규칙
     downloads/          {nn}.{아티스트}-{영상명}.{확장자} (공백은 _)  — 음원·영상 구분 없이 한 폴더 (gitignore)
     archive_audio.txt, archive_video.txt   yt-dlp --download-archive (모드별, 재실행 시 중복 방지. 머신 로컬 상태 — gitignore)
     classification.json                    영상별 분류·파일명 결과표 = 복원 매니페스트 {"playlist": {url,title}, "items": [...]} — 커밋 대상
+    build/                                 build_timeline.py 산출물 — 절대경로 포함, 매니페스트에서 재생성 (gitignore)
 ```
 
 새 재생목록을 추가할 때는 `02.{이름}/` 처럼 번호를 이어서 만들고, `python3 playlist_dl.py <URL> --out 02.{이름}` 으로 받는다.
@@ -34,6 +37,21 @@ python3 playlist_dl.py --restore 01.욕망은오랜병 --cookies-from-browser ch
 - `--only ID`·`--dry-run`·포맷 옵션은 그대로 조합 가능. url 위치 인자와 `--out` 은 무시된다.
 - `archive_*.txt` 는 gitignore 라 새 머신엔 없어 전부 내려받고, 원본 머신에서는 전부 스킵된다.
 - 01 번 매니페스트는 구버전(항목 리스트만) 형식으로 만들어졌던 것을 2026-09-08 에 새 형식으로 감쌌다. `read_manifest` 는 리스트 형식도 그대로 읽는다.
+
+## Resolve 타임라인 템플릿 (`build_timeline.py`)
+
+영상 제작 파이프라인의 다음 칸. 매니페스트 순서대로 DaVinci Resolve 에 일렬로 들어가는 FCPXML 1.8 을 만든다 (크로스페이드 없음 — 재광님 결정. 곡 간격만 `--gap`).
+
+```bash
+python3 build_timeline.py 01.욕망은오랜병
+python3 build_timeline.py 01.욕망은오랜병 --fps 25 --gap 1.0
+```
+
+- `build/timeline.fcpxml`: 1920x1080, `--fps` 24/25/30/60(기본 30). 음원 곡은 스파인에 커버 정지 이미지(`<video>`, asset duration 0s) + `lane="-1"` 에 음원 `<asset-clip>`, 영상 곡은 mp4 `<asset-clip>`. 곡마다 `nn 아티스트 - 곡명` 마커. 길이는 ffprobe 실측을 프레임으로 반올림, 경로는 `file://` 절대경로.
+- `build/tracklist.srt`: 곡 구간마다 "아티스트 - 곡명" (자막 트랙으로 불러와 '지금 재생 중'). `build/description.md`: 챕터 타임스탬프 + 크레딧 (m4a `description` 태그의 `Provided to YouTube by …`, 없으면 채널명, + 원본 URL). `build/covers/`: m4a 임베드 커버 추출, 없으면 black.png.
+- Resolve: File > Import > Timeline > Import AAF, EDL, XML… → fcpxml, File > Import > Subtitle → srt.
+- 곡 파일이 없으면 BuildError 로 멈춘다 (`--restore` 먼저).
+- **미검증 (2026-09-08)**: 이 맥에 Resolve 가 설치돼 있지 않아 실제 import 는 확인하지 못했다. 설치 후 확인할 것 — 음원 `lane="-1"` 이 A1 로 들어가는지, 정지 이미지 asset(duration 0s)이 곡 길이로 깔리는지, mp4 의 임베드 커버(png 스트림)를 Resolve 가 무시하는지, 클립 마커가 보이는지. 어긋나면 `write_fcpxml` 만 고치면 된다.
 
 ## 실행 (반드시 로컬 터미널 — 프리미엄 쿠키가 Chrome 에 있음)
 
@@ -98,5 +116,5 @@ python3 playlist_dl.py --cookies-from-browser chrome             # 다운로드
 
 - `~/Music/_to_delete_playlist_dl/` 에 초기 버전 스크립트 사본이 남아 있음 — 지워도 됨.
 - git 저장소 (2026-09-08 init, main). `downloads/`·`archive_*.txt`·미디어 확장자는 `.gitignore` — 커밋되는 산출물은 `*/classification.json` 만.
-- 코드 변경 후에는 `python3 test_offline.py` (yt-dlp 가 PATH 에 있어야 CLI 검증 단계까지 통과. pillow 없으면 스토리보드 섹션은 건너뛴다 — 스크립트와 같은 정책).
+- 코드 변경 후에는 `python3 test_offline.py` (yt-dlp 가 PATH 에 있어야 CLI 검증 단계까지 통과. pillow 없으면 스토리보드 섹션은 건너뛴다 — 스크립트와 같은 정책). `build_timeline.py` 를 고쳤으면 `python3 test_build_timeline.py` (ffmpeg 필요).
 - 대화 언어는 한국어.

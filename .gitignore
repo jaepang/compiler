@@ -15,3 +15,6 @@ archive_*.txt
 # python / macOS
 __pycache__/
 .DS_Store
+
+# 편집기용 산출물 (fcpxml/srt/description/커버) — 절대경로가 들어가고 매니페스트에서 재생성됨
+build/
