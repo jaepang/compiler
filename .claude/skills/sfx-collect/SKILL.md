@@ -58,6 +58,7 @@ description: 플레이리스트 영상에 쓸 효과음·사운드스케이프(L
 - 실행 하네스가 `if`/`for` 가 든 긴 `ego-browser nodejs <<'EOF'` heredoc 을 거부하면(서브에이전트·제한 모드에서 겪음) JS 를 스크래치 `.js` 파일로 쓰고 `ego-browser nodejs < file.js` 로 stdin 으로 넘긴다. 동작은 같다.
 - 루프 재료는 `sfx.py check` 가 앞뒤 100ms 의 짧은 페이드도 잡아준다. 페이드가 있으면 이어 붙일 때 딥이 생기니, 사이클 경계(파형이 반복되는 지점)에서 잘라 `*.loop.wav` 를 만들어 등록하거나 GarageBand 에서 10ms 크로스페이드를 준다.
 - 받은 파일은 반드시 스크래치 폴더에 두고 등록 후 지운다 — `~/Downloads` 에 남기지 않는다.
+- **원샷 꼬리로 베드 만들기(`loopify`)**: "드롭 뒤 소리처럼 은은하게 계속 깔리는 것" 같은 요청은 새 파일을 찾는 것보다 그 원샷의 꼬리 구간을 `sfx.py loopify <id> --start S --end E --length 300 --id <new>` 로 조각 무작위 배열해 만드는 편이 음색·밀도가 정확히 맞는다. 시작점은 트랜지언트가 사라진 뒤(포락선 50ms 로 확인), 끝점은 페이드 전. 같은 seed 면 재현되고 `restore` 가 레시피로 다시 만든다. 검색으로 찾은 크래클 베드는 대개 드롭 꼬리보다 훨씬 촘촘하고 크다(2026-09-10 확인).
 
 ## 파일 배치
 
@@ -71,4 +72,4 @@ sfx/
   sfx/<id>.<ext>         ../../sfx/<category>/<file> 로의 상대 심볼릭 링크 (gitignore, `sfx.py link --project` 로 재생성)
 ```
 
-`sfx.py` 하위 명령: `add`(등록), `list [--tags …] [--project DIR]`, `credits [--all]`(설명문용 문구), `restore`(download_url 있는 항목 재다운로드 + 모든 프로젝트 링크 재생성; Pixabay 처럼 브라우저 다운로드만 되는 항목은 page_url 을 안내), `check <id|file>`(길이·볼륨·루프 이음새·짧은 페이드), `projects`, `link [ID …] --project DIR`, `unlink ID … --project DIR`, `remove ID …`(라이브러리에서 제거 — 프로젍트 링크 해제·파일 삭제·매니페스트 항목 제거).
+`sfx.py` 하위 명령: `add`(등록), `list [--tags …] [--project DIR]`, `credits [--all]`(설명문용 문구), `restore`(download_url 있는 항목 재다운로드 + 모든 프로젝트 링크 재생성; Pixabay 처럼 브라우저 다운로드만 되는 항목은 page_url 을 안내), `check <id|file>`(길이·볼륨·루프 이음새·짧은 페이드), `projects`, `link [ID …] --project DIR`, `unlink ID … --project DIR`, `remove ID …`(라이브러리에서 제거 — 프로젍트 링크 해제·파일 삭제·매니페스트 항목 제거), `loopify SRC --length SEC --id NEW [--start --end --min-seg --max-seg --xfade --seed --gain]`(원샷 꼬리 등 짧은 구간으로 베드 루프 생성·등록, 라이선스 상속·레시피 기록).

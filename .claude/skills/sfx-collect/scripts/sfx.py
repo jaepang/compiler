@@ -11,6 +11,8 @@
   sfx.py link [ID ...] --project DIR   DIR/sfx/ 에 상대 심볼릭 링크 생성 + DIR/sfx.json 에 기록. ID 생략 시 sfx.json 대로 재생성
   sfx.py unlink ID ... --project DIR   링크·기록 제거
   sfx.py remove ID ...              라이브러리에서 제거 (모든 프로젝트 링크 해제 → 파일 삭제 → 매니페스트 항목 제거)
+  sfx.py loopify SRC --length SEC --id NEW [--start S --end S --min-seg 0.5 --max-seg 1.5 --xfade 0.04 --seed 1 --gain dB]
+                                    원샷의 꼬리 같은 짧은 구간을 무작위 조각으로 이어붙여 긴 베드 루프를 만들어 등록 (라이선스·출처 상속, 레시피 기록 → restore 가 재생성)
   sfx.py list --project DIR         그 프로젝트가 쓰는 소리만
 
 레포 루트는 이 스크립트 위치(.claude/skills/sfx-collect/scripts)에서 올라가 찾는다 (테스트용 SFX_ROOT 환경변수로 대체 가능).
@@ -19,9 +21,11 @@
 from __future__ import annotations
 
 import argparse
+import array
 import datetime as dt
 import json
 import os
+import random
 import re
 import shutil
 import subprocess
@@ -180,6 +184,87 @@ def cmd_unlink(a: argparse.Namespace) -> int:
     return 0
 
 
+SR = 48000
+
+
+def _decode_s16(path: Path, start: float, end: float | None, channels: int) -> array.array:
+    """소스 채널 수 그대로 디코드 (모노를 -ac 2 로 업믹스하면 ffmpeg 가 3dB 를 낮춘다)"""
+    cmd = ["ffmpeg", "-v", "error", "-ss", str(start)] + (["-to", str(end)] if end is not None else []) + ["-i", str(path), "-f", "s16le", "-ac", str(channels), "-ar", str(SR), "-"]
+    raw = subprocess.run(cmd, capture_output=True, check=True).stdout
+    a = array.array("h")
+    a.frombytes(raw[: len(raw) // (2 * channels) * (2 * channels)])
+    return a
+
+
+def shuffle_loop(src: array.array, length: float, min_seg: float, max_seg: float, xfade: float, seed: int, channels: int = 2) -> array.array:
+    """s16 인터리브 프레임을 무작위 구간(min~max 초)으로 뽑아 xfade 초 선형 크로스페이드로 이어붙인다. 같은 seed 면 같은 결과"""
+    rnd = random.Random(seed)
+    ch = channels
+    n = len(src) // ch
+    xf = max(1, int(xfade * SR))
+    lo, hi = max(xf + 1, int(min_seg * SR)), max(xf + 2, int(max_seg * SR))
+    if n <= hi:
+        sys.exit(f"소스 구간({n / SR:.2f}s)이 조각 길이보다 짧습니다")
+    target = int(length * SR)
+    out = array.array("h")
+    while len(out) // 2 < target:
+        seg = rnd.randint(lo, hi)
+        s = rnd.randrange(0, n - seg)
+        chunk = src[s * ch:(s + seg) * ch]
+        if not out:
+            out.extend(chunk)
+            continue
+        base = len(out) - xf * ch
+        for k in range(xf * ch):  # 끝 xf 프레임과 새 조각 앞 xf 프레임을 섞는다
+            w = (k // ch + 0.5) / xf
+            out[base + k] = int(out[base + k] * (1 - w) + chunk[k] * w)
+        out.extend(chunk[xf * ch:])
+    del out[target * ch:]
+    return out
+
+
+def make_loop(src_path: Path, dst: Path, recipe: dict, ffmpeg: str = "ffmpeg") -> None:
+    ch = max(1, probe(src_path)["channels"] or 2)
+    pcm = _decode_s16(src_path, recipe["start"], recipe.get("end"), ch)
+    out = shuffle_loop(pcm, recipe["length"], recipe["min_seg"], recipe["max_seg"], recipe["xfade"], recipe["seed"], ch)
+    af = f"volume={recipe.get('gain_db', 0.0)}dB"
+    subprocess.run([ffmpeg, "-v", "error", "-y", "-f", "s16le", "-ac", str(ch), "-ar", str(SR), "-i", "-", "-af", af, "-c:a", "pcm_s24le", str(dst)],
+                   input=out.tobytes(), check=True)
+
+
+def cmd_loopify(a: argparse.Namespace) -> int:
+    doc = load()
+    items = {i["id"]: i for i in doc["items"]}
+    if a.src in items:
+        src_item, src_path = items[a.src], SFX / items[a.src]["file"]
+    else:
+        src_item, src_path = None, Path(a.src).expanduser()
+    if not src_path.exists():
+        sys.exit(f"소스가 없습니다: {a.src}")
+    sid = slugify(a.id)
+    if sid in items:
+        sys.exit(f"이미 있는 id: {sid}")
+    category = slugify(a.category or (src_item["category"] if src_item else "misc"))
+    dest = SFX / category / f"{sid}.wav"
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    recipe = {"from": src_item["id"] if src_item else str(src_path), "start": a.start, "end": a.end, "length": a.length,
+              "min_seg": a.min_seg, "max_seg": a.max_seg, "xfade": a.xfade, "seed": a.seed, "gain_db": a.gain}
+    make_loop(src_path, dest, recipe)
+    info = probe(dest)
+    base = src_item or {"tags": [], "source": "file", "source_id": "", "page_url": "", "license": a.license or "", "attribution": "", "attribution_required": False}
+    if not base.get("license"):
+        sys.exit("소스가 매니페스트에 없으면 --license 를 주세요")
+    item = {"id": sid, "kind": "loop", "category": category, "tags": sorted(set(base["tags"]) | {"bed", "loopify"} | {t.strip() for t in (a.tags or "").split(",") if t.strip()}),
+            "file": str(dest.relative_to(SFX)), "source": f"derived:{base['source']}", "source_id": base.get("source_id", ""), "page_url": base.get("page_url", ""),
+            "download_url": "", "license": base["license"], "attribution_required": bool(base.get("attribution")), "attribution": base.get("attribution", ""),
+            "duration": info["duration"], "sample_rate": info["sample_rate"], "codec": info["codec"], "added": dt.date.today().isoformat(),
+            "note": a.note or f"{recipe['from']} 의 {a.start:.2f}~{a.end if a.end is not None else '끝'}s 구간을 {a.min_seg}~{a.max_seg}s 조각 무작위 배열(xfade {a.xfade}s, seed {a.seed})로 {a.length:.0f}s 베드로", "derived": recipe}
+    doc["items"].append(item)
+    save(doc)
+    print(f"생성·등록: sfx/{item['file']}  {info['duration']:.1f}s  mean {mean_volume(dest):.1f}dB  [{item['license']}]  ← {recipe['from']}")
+    return 0
+
+
 def cmd_remove(a: argparse.Namespace) -> int:
     doc = load()
     items = {i["id"]: i for i in doc["items"]}
@@ -226,12 +311,23 @@ def cmd_credits(a: argparse.Namespace) -> int:
 
 def cmd_restore(a: argparse.Namespace) -> int:
     missing = 0
-    for i in load()["items"]:
+    items = load()["items"]
+    by_id = {i["id"]: i for i in items}
+    for i in sorted(items, key=lambda x: 1 if x.get("derived") else 0):  # 소스 먼저, 파생은 나중에
         dest = SFX / i["file"]
         if dest.exists():
             continue
         missing += 1
-        if i["download_url"]:
+        if i.get("derived"):
+            src = by_id.get(i["derived"]["from"])
+            src_path = SFX / src["file"] if src else Path(i["derived"]["from"])
+            if not src_path.exists():
+                print(f"파생 소스가 없어 건너뜀: {i['id']} ← {i['derived']['from']}")
+                continue
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            make_loop(src_path, dest, i["derived"])
+            print(f"재생성: {i['id']} ← {i['derived']['from']} (레시피)")
+        elif i["download_url"]:
             dest.parent.mkdir(parents=True, exist_ok=True)
             print(f"받는 중: {i['id']} ← {i['download_url']}")
             subprocess.run(["curl", "-L", "-sS", "-o", str(dest), i["download_url"]], check=True)
@@ -275,6 +371,11 @@ def main() -> int:
     s = sub.add_parser("link"); s.add_argument("ids", nargs="*"); s.add_argument("--project", required=True); s.set_defaults(fn=cmd_link)
     s = sub.add_parser("unlink"); s.add_argument("ids", nargs="+"); s.add_argument("--project", required=True); s.set_defaults(fn=cmd_unlink)
     s = sub.add_parser("remove"); s.add_argument("ids", nargs="+"); s.set_defaults(fn=cmd_remove)
+    s = sub.add_parser("loopify"); s.add_argument("src", help="매니페스트 id 또는 파일"); s.add_argument("--length", type=float, required=True, metavar="SEC")
+    s.add_argument("--id", required=True); s.add_argument("--start", type=float, default=0.0); s.add_argument("--end", type=float)
+    s.add_argument("--min-seg", type=float, default=0.5); s.add_argument("--max-seg", type=float, default=1.5); s.add_argument("--xfade", type=float, default=0.04)
+    s.add_argument("--seed", type=int, default=1); s.add_argument("--gain", type=float, default=0.0, metavar="DB"); s.add_argument("--category"); s.add_argument("--tags")
+    s.add_argument("--license", help="소스가 파일일 때"); s.add_argument("--note"); s.set_defaults(fn=cmd_loopify)
     s = sub.add_parser("credits"); s.add_argument("--all", action="store_true"); s.set_defaults(fn=cmd_credits)
     s = sub.add_parser("restore"); s.set_defaults(fn=cmd_restore)
     s = sub.add_parser("check"); s.add_argument("target"); s.add_argument("--loop", action="store_true"); s.set_defaults(fn=cmd_check)

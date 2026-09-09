@@ -196,6 +196,45 @@
       "codec": "pcm_s24le",
       "added": "2026-09-10",
       "note": "Vinyl Crackle 33RPM (freesound_community). 5:04, 전형적 33회전 크래클(52클릭/분, 회전 주기 클릭 뚜렷하지 않음, 드리프트 12.5dB). 329771 과 음색 거리 4.2 — 대안. 시작 1.0초의 팝을 잘라 48k/24bit WAV 로 (원본 mp3 는 24kHz). 복원: 페이지에서 mp3 받아 -ss 1.0 으로 같은 처리"
+    },
+    {
+      "id": "vinyl-crackle-bed-from-needle-329771",
+      "kind": "loop",
+      "category": "vinyl",
+      "tags": [
+        "bed",
+        "crackle",
+        "drop",
+        "loopify",
+        "needle",
+        "start",
+        "subtle",
+        "vinyl"
+      ],
+      "file": "vinyl/vinyl-crackle-bed-from-needle-329771.wav",
+      "source": "derived:freesound",
+      "source_id": "329771",
+      "page_url": "https://freesound.org/people/mikala_oidua/sounds/329771/",
+      "download_url": "",
+      "license": "CC0 1.0",
+      "attribution_required": false,
+      "attribution": "",
+      "duration": 300.0,
+      "sample_rate": 48000,
+      "codec": "pcm_s24le",
+      "added": "2026-09-10",
+      "note": "니들드롭 329771 의 드롭 뒤 꼬리(1.0~5.3s, -44dB 은은한 크래클)를 0.5~1.5s 조각 무작위 배열(xfade 40ms, seed 1)로 5분 베드로. 드롭과 음색·밀도가 같아 이어서 깔면 자연스럽다",
+      "derived": {
+        "from": "needle-drop-crackle-mikala-freesound-329771",
+        "start": 1.0,
+        "end": 5.3,
+        "length": 300.0,
+        "min_seg": 0.5,
+        "max_seg": 1.5,
+        "xfade": 0.04,
+        "seed": 1,
+        "gain_db": 0.0
+      }
     }
   ]
 }
