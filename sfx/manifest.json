@@ -97,6 +97,55 @@
       "codec": "pcm_s24le",
       "added": "2026-09-09",
       "note": "Vintage film projector working. 원본 24.98s 의 뒤 ~1s 무음을 잘라 24.0s, 48k/24bit. 1.5s 사이클 반복 합성"
+    },
+    {
+      "id": "needle-drop-crackle-mikala-freesound-329771",
+      "kind": "oneshot",
+      "category": "vinyl",
+      "tags": [
+        "vinyl",
+        "needle",
+        "drop",
+        "crackle",
+        "start"
+      ],
+      "file": "vinyl/needle-drop-crackle-mikala-freesound-329771.mp3",
+      "source": "freesound",
+      "source_id": "329771",
+      "page_url": "https://freesound.org/people/mikala_oidua/sounds/329771/",
+      "download_url": "https://cdn.freesound.org/previews/329/329771_5481182-hq.mp3",
+      "license": "CC0 1.0",
+      "attribution_required": false,
+      "attribution": "",
+      "duration": 5.461,
+      "sample_rate": 48000,
+      "codec": "mp3",
+      "added": "2026-09-10",
+      "note": "Record Start Crackle (mikala_oidua). 바늘 툭 + 크래클 바닥(-44dB) — 펀치 40dB. 파일은 Freesound hq 프리뷰(128k mp3, 비로그인); 원본은 로그인 후 /download/ 로 교체 가능"
+    },
+    {
+      "id": "needle-drop-breviceps-freesound-556722",
+      "kind": "oneshot",
+      "category": "vinyl",
+      "tags": [
+        "vinyl",
+        "needle",
+        "drop",
+        "crackle"
+      ],
+      "file": "vinyl/needle-drop-breviceps-freesound-556722.mp3",
+      "source": "freesound",
+      "source_id": "556722",
+      "page_url": "https://freesound.org/people/Breviceps/sounds/556722/",
+      "download_url": "https://cdn.freesound.org/previews/556/556722_9159316-hq.mp3",
+      "license": "CC0 1.0",
+      "attribution_required": false,
+      "attribution": "",
+      "duration": 6.821,
+      "sample_rate": 44100,
+      "codec": "mp3",
+      "added": "2026-09-10",
+      "note": "Record Player Needle is dropped & Vinyl crackling (Breviceps). 강한 툭(피크 -2.5dB) 뒤 조용한 크래클(-53dB) — 펀치 50dB. hq 프리뷰(128k mp3); Pixabay 37522 는 같은 소리의 24kHz 저품질 복제"
     }
   ]
 }
