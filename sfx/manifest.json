@@ -146,6 +146,56 @@
       "codec": "mp3",
       "added": "2026-09-10",
       "note": "Record Player Needle is dropped & Vinyl crackling (Breviceps). 강한 툭(피크 -2.5dB) 뒤 조용한 크래클(-53dB) — 펀치 50dB. hq 프리뷰(128k mp3); Pixabay 37522 는 같은 소리의 24kHz 저품질 복제"
+    },
+    {
+      "id": "vinyl-crackle-bed-giraffe-freesound-719879",
+      "kind": "loop",
+      "category": "vinyl",
+      "tags": [
+        "vinyl",
+        "crackle",
+        "surface-noise",
+        "loop",
+        "bed"
+      ],
+      "file": "vinyl/vinyl-crackle-bed-giraffe-freesound-719879.mp3",
+      "source": "freesound",
+      "source_id": "719879",
+      "page_url": "https://freesound.org/people/TheSurfboardingGiraffe/sounds/719879/",
+      "download_url": "https://cdn.freesound.org/previews/719/719879_7597896-hq.mp3",
+      "license": "CC0 1.0",
+      "attribution_required": false,
+      "attribution": "",
+      "duration": 300.0,
+      "sample_rate": 44100,
+      "codec": "mp3",
+      "added": "2026-09-10",
+      "note": "Old Vinyl Record Film Optical White Background Noise (TheSurfboardingGiraffe). 5분, 레벨 드리프트 3.3dB·주기성 4% 로 가장 균일, 329771 니들드롭 꼬리와 음색 거리 최소(centroid 2594Hz). 촘촘한 지직 질감. hq 프리뷰(128k mp3)"
+    },
+    {
+      "id": "vinyl-crackle-33rpm-pixabay-6065",
+      "kind": "loop",
+      "category": "vinyl",
+      "tags": [
+        "vinyl",
+        "crackle",
+        "surface-noise",
+        "loop",
+        "33rpm"
+      ],
+      "file": "vinyl/vinyl-crackle-33rpm-pixabay-6065.wav",
+      "source": "pixabay",
+      "source_id": "6065",
+      "page_url": "https://pixabay.com/sound-effects/film-special-effects-vinyl-crackle-33rpm-6065/",
+      "download_url": "",
+      "license": "Pixabay Content License",
+      "attribution_required": false,
+      "attribution": "",
+      "duration": 303.536,
+      "sample_rate": 48000,
+      "codec": "pcm_s24le",
+      "added": "2026-09-10",
+      "note": "Vinyl Crackle 33RPM (freesound_community). 5:04, 전형적 33회전 크래클(52클릭/분, 회전 주기 클릭 뚜렷하지 않음, 드리프트 12.5dB). 329771 과 음색 거리 4.2 — 대안. 시작 1.0초의 팝을 잘라 48k/24bit WAV 로 (원본 mp3 는 24kHz). 복원: 페이지에서 mp3 받아 -ss 1.0 으로 같은 처리"
     }
   ]
 }
