@@ -52,6 +52,17 @@ assert r.returncode != 0 and "no-such-id" in (r.stdout + r.stderr)
 r = subprocess.run([sys.executable, str(HERE / "sfx.py"), "link", "needle-test", "--project", "99.없음"], capture_output=True, text=True, env=env)
 assert r.returncode != 0 and "99.없음" in (r.stdout + r.stderr)
 
+print("== remove: 프로젝트 링크 해제 + 파일 삭제 + 매니페스트 제거 ==")
+sfx("link", "needle-test", "--project", "02.둘째")
+out = sfx("remove", "needle-test")
+assert not (root / "sfx/vinyl/needle-test.wav").exists(), "파일이 남아 있음"
+assert "needle-test" not in [i["id"] for i in json.loads((root / "sfx/manifest.json").read_text(encoding="utf-8"))["items"]]
+for proj in ("01.첫영상", "02.둘째"):
+    assert not (root / proj / "sfx/needle-test.wav").exists() and "needle-test" not in json.loads((root / proj / "sfx.json").read_text(encoding="utf-8"))["sounds"], proj
+assert "02.둘째" in out and "01.첫영상" in out
+r = subprocess.run([sys.executable, str(HERE / "sfx.py"), "remove", "needle-test"], capture_output=True, text=True, env=env)
+assert r.returncode != 0 and "needle-test" in (r.stdout + r.stderr)
+
 print("== projects: classification.json 을 가진 폴더 목록 ==")
 out = sfx("projects"); assert "01.첫영상" in out and "02.둘째" in out and not any(l.startswith("dl") for l in out.splitlines()), out
 shutil.rmtree(root, ignore_errors=True)

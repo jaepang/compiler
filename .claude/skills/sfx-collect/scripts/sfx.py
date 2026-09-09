@@ -10,6 +10,7 @@
   sfx.py projects                   연결할 수 있는 프로젝트 폴더 (classification.json 이 있는 폴더)
   sfx.py link [ID ...] --project DIR   DIR/sfx/ 에 상대 심볼릭 링크 생성 + DIR/sfx.json 에 기록. ID 생략 시 sfx.json 대로 재생성
   sfx.py unlink ID ... --project DIR   링크·기록 제거
+  sfx.py remove ID ...              라이브러리에서 제거 (모든 프로젝트 링크 해제 → 파일 삭제 → 매니페스트 항목 제거)
   sfx.py list --project DIR         그 프로젝트가 쓰는 소리만
 
 레포 루트는 이 스크립트 위치(.claude/skills/sfx-collect/scripts)에서 올라가 찾는다 (테스트용 SFX_ROOT 환경변수로 대체 가능).
@@ -179,6 +180,25 @@ def cmd_unlink(a: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_remove(a: argparse.Namespace) -> int:
+    doc = load()
+    items = {i["id"]: i for i in doc["items"]}
+    missing = [s for s in a.ids if s not in items]
+    if missing:
+        sys.exit(f"매니페스트에 없는 id: {', '.join(missing)}")
+    for sid in a.ids:
+        for d in project_dirs():  # 쓰는 프로젝트가 있으면 먼저 링크 해제
+            if sid in load_uses(d):
+                cmd_unlink(argparse.Namespace(ids=[sid], project=d.name))
+        f = SFX / items[sid]["file"]
+        if f.exists():
+            f.unlink()
+        print(f"제거: {sid}  (sfx/{items[sid]['file']})")
+    doc["items"] = [i for i in doc["items"] if i["id"] not in set(a.ids)]
+    save(doc)
+    return 0
+
+
 def cmd_list(a: argparse.Namespace) -> int:
     want = {t.strip() for t in (a.tags or "").split(",") if t.strip()}
     only = set(load_uses(project_dir(a.project))) if a.project else None
@@ -254,6 +274,7 @@ def main() -> int:
     s = sub.add_parser("projects"); s.set_defaults(fn=cmd_projects)
     s = sub.add_parser("link"); s.add_argument("ids", nargs="*"); s.add_argument("--project", required=True); s.set_defaults(fn=cmd_link)
     s = sub.add_parser("unlink"); s.add_argument("ids", nargs="+"); s.add_argument("--project", required=True); s.set_defaults(fn=cmd_unlink)
+    s = sub.add_parser("remove"); s.add_argument("ids", nargs="+"); s.set_defaults(fn=cmd_remove)
     s = sub.add_parser("credits"); s.add_argument("--all", action="store_true"); s.set_defaults(fn=cmd_credits)
     s = sub.add_parser("restore"); s.set_defaults(fn=cmd_restore)
     s = sub.add_parser("check"); s.add_argument("target"); s.add_argument("--loop", action="store_true"); s.set_defaults(fn=cmd_check)

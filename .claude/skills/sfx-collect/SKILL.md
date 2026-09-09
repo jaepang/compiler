@@ -71,4 +71,4 @@ sfx/
   sfx/<id>.<ext>         ../../sfx/<category>/<file> 로의 상대 심볼릭 링크 (gitignore, `sfx.py link --project` 로 재생성)
 ```
 
-`sfx.py` 하위 명령: `add`(등록), `list [--tags …] [--project DIR]`, `credits [--all]`(설명문용 문구), `restore`(download_url 있는 항목 재다운로드 + 모든 프로젝트 링크 재생성; Pixabay 처럼 브라우저 다운로드만 되는 항목은 page_url 을 안내), `check <id|file>`(길이·볼륨·루프 이음새·짧은 페이드), `projects`, `link [ID …] --project DIR`, `unlink ID … --project DIR`.
+`sfx.py` 하위 명령: `add`(등록), `list [--tags …] [--project DIR]`, `credits [--all]`(설명문용 문구), `restore`(download_url 있는 항목 재다운로드 + 모든 프로젝트 링크 재생성; Pixabay 처럼 브라우저 다운로드만 되는 항목은 page_url 을 안내), `check <id|file>`(길이·볼륨·루프 이음새·짧은 페이드), `projects`, `link [ID …] --project DIR`, `unlink ID … --project DIR`, `remove ID …`(라이브러리에서 제거 — 프로젍트 링크 해제·파일 삭제·매니페스트 항목 제거).
