@@ -2,7 +2,7 @@
 """sfx.py — 레포 루트 sfx/ 효과음 라이브러리와 sfx/manifest.json 관리 (표준 라이브러리 + ffprobe/ffmpeg).
 
   sfx.py add FILE --kind oneshot|loop|ambience --category vinyl --source pixabay --page-url URL --license "…"
-             [--download-url URL] [--attribution "…"] [--tags a,b] [--id slug] [--note "…"] [--wav]
+             [--download-url URL] [--attribution "…"] [--tags a,b] [--id slug] [--note "…"] [--wav] [--gain dB]
   sfx.py list [--tags a,b] [--kind …]
   sfx.py credits [--all]            표기 필요한 항목의 크레딧 문구 (설명문용)
   sfx.py restore                    download_url 이 있는데 파일이 없는 항목을 curl 로 다시 받는다
@@ -90,9 +90,9 @@ def cmd_add(a: argparse.Namespace) -> int:
     category = slugify(a.category)
     dest_dir = SFX / category
     dest_dir.mkdir(parents=True, exist_ok=True)
-    if a.wav:
-        dest = dest_dir / f"{sid}.wav"
-        subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(src), "-vn", "-ar", "48000", "-c:a", "pcm_s24le", str(dest)], check=True)
+    if a.wav or a.gain:
+        dest = dest_dir / f"{sid}.wav"  # 게인을 주면 재인코딩이 필요하니 48k/24bit WAV 로
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(src), "-vn", "-af", f"volume={a.gain or 0}dB", "-ar", "48000", "-c:a", "pcm_s24le", str(dest)], check=True)
     else:
         dest = dest_dir / f"{sid}{src.suffix.lower()}"
         shutil.copy2(src, dest)
@@ -102,7 +102,7 @@ def cmd_add(a: argparse.Namespace) -> int:
             "file": str(dest.relative_to(SFX)), "source": a.source, "source_id": a.source_id or "", "page_url": a.page_url,
             "download_url": a.download_url or "", "license": a.license, "attribution_required": bool(attribution),
             "attribution": attribution, "duration": info["duration"], "sample_rate": info["sample_rate"], "codec": info["codec"],
-            "added": dt.date.today().isoformat(), "note": a.note or ""}
+            "added": dt.date.today().isoformat(), "note": a.note or "", "gain_db": float(a.gain or 0.0)}
     doc["items"].append(item)
     save(doc)
     vol = mean_volume(dest)
@@ -365,6 +365,7 @@ def main() -> int:
     s = sub.add_parser("add"); s.add_argument("file"); s.add_argument("--kind", required=True); s.add_argument("--category", required=True)
     s.add_argument("--source", required=True); s.add_argument("--source-id"); s.add_argument("--page-url", required=True); s.add_argument("--license", required=True)
     s.add_argument("--download-url"); s.add_argument("--attribution"); s.add_argument("--tags"); s.add_argument("--id"); s.add_argument("--note"); s.add_argument("--wav", action="store_true")
+    s.add_argument("--gain", type=float, default=0.0, metavar="DB", help="등록 시 게인(dB). 원본보다 너무 조용/큰 소리를 라이브러리 레벨에 맞출 때")
     s.set_defaults(fn=cmd_add)
     s = sub.add_parser("list"); s.add_argument("--tags"); s.add_argument("--kind"); s.add_argument("--project"); s.set_defaults(fn=cmd_list)
     s = sub.add_parser("projects"); s.set_defaults(fn=cmd_projects)

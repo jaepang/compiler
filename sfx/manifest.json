@@ -235,6 +235,58 @@
         "seed": 1,
         "gain_db": 0.0
       }
+    },
+    {
+      "id": "record-end-lift-mikala-freesound-346816",
+      "kind": "oneshot",
+      "category": "vinyl",
+      "tags": [
+        "vinyl",
+        "record-end",
+        "needle-lift",
+        "crackle",
+        "ending"
+      ],
+      "file": "vinyl/record-end-lift-mikala-freesound-346816.wav",
+      "source": "freesound",
+      "source_id": "346816",
+      "page_url": "https://freesound.org/people/mikala_oidua/sounds/346816/",
+      "download_url": "https://cdn.freesound.org/previews/346/346816_5481182-hq.mp3",
+      "license": "CC0 1.0",
+      "attribution_required": false,
+      "attribution": "",
+      "duration": 10.517,
+      "sample_rate": 48000,
+      "codec": "pcm_s24le",
+      "added": "2026-09-10",
+      "note": "Record End Crackle_01 (mikala_oidua — 니들드롭 329771 과 같은 작성자·장비). 9.5초 조용한 크래클 → 9.6초 바늘 떼는 툭 → 정적. 원본 -60dB 라 +12dB 로 등록(크래클 -48, 툭 -27 → 베드 -44.5 아래에서 잦아드는 레벨). 원본은 WAV 96k/24bit(로그인)",
+      "gain_db": 12.0
+    },
+    {
+      "id": "needle-up-auto-turntable-richwise-freesound-453180",
+      "kind": "oneshot",
+      "category": "vinyl",
+      "tags": [
+        "vinyl",
+        "record-end",
+        "needle-lift",
+        "auto-turntable",
+        "ending"
+      ],
+      "file": "vinyl/needle-up-auto-turntable-richwise-freesound-453180.wav",
+      "source": "freesound",
+      "source_id": "453180",
+      "page_url": "https://freesound.org/people/richwise/sounds/453180/",
+      "download_url": "https://cdn.freesound.org/previews/453/453180_1481531-hq.mp3",
+      "license": "CC0 1.0",
+      "attribution_required": false,
+      "attribution": "",
+      "duration": 10.604,
+      "sample_rate": 48000,
+      "codec": "pcm_s24le",
+      "added": "2026-09-10",
+      "note": "record deck needle up (richwise). 앨범 끝 6.8초 노이즈 → 오토 턴테이블 암 리프트 기계음 4초 → 디지털 무음. +6dB. 대안(다른 장비라 음색 다름)",
+      "gain_db": 6.0
     }
   ]
 }

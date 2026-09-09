@@ -63,6 +63,18 @@ assert "02.둘째" in out and "01.첫영상" in out
 r = subprocess.run([sys.executable, str(HERE / "sfx.py"), "remove", "needle-test"], capture_output=True, text=True, env=env)
 assert r.returncode != 0 and "needle-test" in (r.stdout + r.stderr)
 
+print("== add --gain: 등록하면서 게인 적용 (WAV 변환) ==")
+subprocess.run([FF, "-v", "error", "-y", "-f", "lavfi", "-i", "sine=frequency=300:duration=1.0", "-af", "volume=-30dB", "-c:a", "pcm_s16le", str(src / "quiet.wav")], check=True)
+out = sfx("add", str(src / "quiet.wav"), "--kind", "oneshot", "--category", "vinyl", "--source", "mixkit", "--page-url", "https://x/g", "--license", "CC0 1.0", "--id", "gain-test", "--gain", "12")
+g = root / "sfx/vinyl/gain-test.wav"; assert g.exists()
+err = subprocess.run([FF, "-nostats", "-i", str(g), "-af", "volumedetect", "-f", "null", "-"], capture_output=True, text=True).stderr
+err0 = subprocess.run([FF, "-nostats", "-i", str(src / "quiet.wav"), "-af", "volumedetect", "-f", "null", "-"], capture_output=True, text=True).stderr
+m1 = float(re.search(r"mean_volume:\s*(-?[\d.]+)", err).group(1)); m0 = float(re.search(r"mean_volume:\s*(-?[\d.]+)", err0).group(1))
+assert abs((m1 - m0) - 12.0) < 0.5, (m0, m1)
+item = next(i for i in json.loads((root / "sfx/manifest.json").read_text(encoding="utf-8"))["items"] if i["id"] == "gain-test")
+assert item["gain_db"] == 12.0 and item["codec"] == "pcm_s24le", item
+print("  OK")
+
 print("== loopify: 원샷 꼬리를 조각내 무작위로 이어붙인 베드 루프 생성·등록 ==")
 # 소스: 앞 0.5초 큰 클릭 + 뒤 4초 잡음(크래클 흉내). 꼬리(1.0s~)만 써야 하니 결과에 클릭 크기의 피크가 없어야 한다
 subprocess.run([FF, "-v", "error", "-y", "-f", "lavfi", "-i", "anoisesrc=color=pink:amplitude=0.02:seed=7:d=4.5", "-f", "lavfi", "-i", "sine=frequency=200:duration=0.05",
