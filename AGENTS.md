@@ -92,7 +92,7 @@ python3 .claude/skills/band-sync/scripts/band.py link                      # 다
 
 - GarageBand 실행 중엔 adopt/link 가 멈춘다. 같은 프로젝트를 두 맥에서 동시에 열지 않는다(iCloud 충돌 사본).
 - `diverged`(레포 쪽이 실제 폴더로 바뀜)는 자동으로 고치지 않는다 — 어느 쪽이 최신인지 사람이 고른다.
-- **미검증**: GarageBand 가 링크 경로로 연 프로젝트를 저장할 때 링크를 유지하는지. 저장 후 `status` 가 `diverged` 를 내면 이 방식 대신 복사 push/pull 로 바꾼다.
+- 링크 경로로 열어 저장해도 링크가 유지되고 iCloud 원본의 `ProjectData` 가 갱신됨을 확인(2026-10-16, 01번). 다른 맥에서 `link` 로 받아 여는 것은 아직 안 해봤다.
 
 ## 실행 (반드시 로컬 터미널 — 프리미엄 쿠키가 Chrome 에 있음)
 
