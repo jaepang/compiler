@@ -20,9 +20,10 @@ compiler/
     archive_audio.txt, archive_video.txt   yt-dlp --download-archive (모드별, 재실행 시 중복 방지. 머신 로컬 상태 — gitignore)
     classification.json                    영상별 분류·파일명 결과표 = 복원 매니페스트 {"playlist": {url,title}, "items": [...]} — 커밋 대상
     build/                                 build_timeline.py 산출물 — 절대경로 포함, 매니페스트에서 재생성 (gitignore)
-    *.band                                 GarageBand 프로젝트 — 여기(프로젝트 폴더)에 두고 편집하되 gitignore. 내보낸 믹스는 build/daw/mix.wav
+    *.band                                 GarageBand 프로젝트 — 원본은 iCloud Drive compiler/<프로젝트>/, 여기엔 심볼릭 링크(gitignore, `band.py link` 로 재생성). 내보낸 믹스는 build/daw/mix.wav
   sfx/                  효과음 라이브러리 (영상 여러 개에 재사용). 오디오는 gitignore, sfx/manifest.json(출처·라이선스·크레딧)만 커밋
     (프로젝트)/sfx.json                    그 영상이 쓰는 소리 id 목록 — 커밋. (프로젝트)/sfx/ 는 sfx/ 원본으로의 상대 심볼릭 링크(gitignore, `sfx.py link --project` 로 재생성)
+  .claude/skills/band-sync/    .band 를 iCloud 원본 + 링크로 관리 (status·adopt·link)
   .claude/skills/sfx-collect/  효과음 수집 스킬 — ego-browser 로 Mixkit·Pixabay·Freesound 에서 찾아 받고 sfx.py 로 등록. 사이트별 레시피는 references/sites.md
 ```
 
@@ -78,6 +79,20 @@ python3 build_timeline.py 01.욕망은오랜병 --audio build/daw/mix.wav [--cue
 - mix 모드 `build_timeline`: `--audio` 만 주면 `build_daw.build` → `align_cues` → `build/daw/cues.json` 저장, `--cues` 를 주면 그 파일을 쓴다. FCPXML 은 스파인 = mix 한 `<asset-clip>`(A1), 곡마다 `lane="1"` 연결 클립(커버 `<video>` 또는 무음 mp4 `<asset-clip start=트림>`) + 마커. SRT·description 도 큐 기준. `--gap` 은 무시.
 - 순환 import 주의: `build_daw` 가 `build_timeline` 을 import 하므로 `build_timeline.build` 는 `build_daw` 를 함수 안에서 지연 import 한다.
 - **미검증**: 실제 GarageBand 내보내기로 `align_cues` 검증, mix 모드 FCPXML(스파인 오디오 + lane 1 영상, 커버는 다음 곡까지 `hold`)을 Resolve 가 A1/V1 로 받는지 — 첫 import 때 확인. 어긋나면 `align_cues` 상수(TEMPLATE_SEC·MATCH_DB·EDGE_DB·REFINE) 또는 `write_fcpxml` 의 mix 분기만 고치면 된다.
+
+## GarageBand 프로젝트 동기화 (`band-sync`)
+
+`.band` 는 음원 사본을 패키지 안에 들고 있어 1.9GB(01번)이고 WAV 하나가 GitHub 100MB 한도를 넘으며 저장마다 바이너리가 바뀌어 git 에 맞지 않는다(2026-10-16 결정). 원본은 iCloud Drive `~/Library/Mobile Documents/com~apple~CloudDocs/compiler/<프로젝트>/<이름>.band`, 레포 프로젝트 폴더에는 그 절대경로 심볼릭 링크만 둔다.
+
+```bash
+python3 .claude/skills/band-sync/scripts/band.py status
+python3 .claude/skills/band-sync/scripts/band.py adopt 01.욕망은오랜병     # 이 맥의 실제 .band → iCloud + 링크
+python3 .claude/skills/band-sync/scripts/band.py link                      # 다른 맥: 링크 생성 + iCloud 다운로드 강제
+```
+
+- GarageBand 실행 중엔 adopt/link 가 멈춘다. 같은 프로젝트를 두 맥에서 동시에 열지 않는다(iCloud 충돌 사본).
+- `diverged`(레포 쪽이 실제 폴더로 바뀜)는 자동으로 고치지 않는다 — 어느 쪽이 최신인지 사람이 고른다.
+- **미검증**: GarageBand 가 링크 경로로 연 프로젝트를 저장할 때 링크를 유지하는지. 저장 후 `status` 가 `diverged` 를 내면 이 방식 대신 복사 push/pull 로 바꾼다.
 
 ## 실행 (반드시 로컬 터미널 — 프리미엄 쿠키가 Chrome 에 있음)
 

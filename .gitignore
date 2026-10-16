@@ -19,7 +19,7 @@ __pycache__/
 # 편집기용 산출물 (fcpxml/srt/description/커버) — 절대경로가 들어가고 매니페스트에서 재생성됨
 build/
 
-# GarageBand 프로젝트 (패키지 폴더, 용량 큼) — 프로젝트 폴더 안에 두되 커밋하지 않음. 믹스는 Share > Export 로 build/daw/mix.wav 에
+# GarageBand 프로젝트 — 원본은 iCloud Drive, 프로젝트 폴더엔 심볼릭 링크(.claude/skills/band-sync). 커밋하지 않음. 믹스는 Share > Export 로 build/daw/mix.wav 에
 *.band
 
 # 효과음 라이브러리 — 오디오는 무시, 출처·라이선스 매니페스트만 커밋 (.claude/skills/sfx-collect)
