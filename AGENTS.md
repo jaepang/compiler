@@ -180,6 +180,8 @@ ChatGPT 프로젝트 'compiler 첫 영상' 의 '유튜브 배경 영상 제작' 
   nix 의 opencv4 는 바이너리 캐시가 없어 소스 빌드(10분+)라 pip wheel 을 쓴다.
 - 2026-11-06 로컬 검증: 1920x1080/30fps 5초 렌더가 약 10fps(투명 모드 약 8.7fps) — 30분 영상은 실시간의 3배 남짓 걸린다(4K 출력도 렌더는 1080p 고정이라 비슷, 인코딩만 늘어남). ChatGPT 기준 프리뷰와 같은 디자인으로 나오는 것을 프레임 비교로 확인.
 - `--bg-mode transparent`(2026-11-06 추가): 배경 없이 LP 만, ProRes 4444 `.mov`(yuva444p, 알파)로 내보낸다. Cairo 의 premultiplied BGRA 를 straight alpha 로 되돌려 ffmpeg 에 `bgra` 로 넘긴다. 단색 위에 overlay 해 알파가 살아 있음을 확인. **용량 주의**: 1080p 5초에 293MB(약 59MB/s) → 30분이면 1080p 로도 100GB 대. Resolve 에서 아직 import 안 해봤다.
+- `--dot-opaque`(2026-11-06 추가): 점마다 쓰던 톤 alpha(0.01~0.92, 중앙값 약 0.26)를 버리고 전부 alpha 1 로 그린다(가장자리 안티앨리어싱만 남음). 편집기에서 점 색을 어둡게 바꿀 때 필요 — 원래 alpha 로는 흰 배경 위 검은 점이 밝기 223 정도로 거의 안 보였다. 디자인의 농담이 사라지므로 기본값은 그대로 둔다.
+- FilmCraft(dotfiles cask `filmcraft` + `filmcraft-cli`) 합성 테스트(2026-11-06, `bg/preview/filmcraft/`): straight alpha 를 정확히 읽는다(배경 픽셀 일치, 가장자리 오차 0.3~0.4 단계). 단 합성·디졸브를 **선형광**으로 해서 생성기(감마 합성, `composite_premult_bgra_over_bgr`)보다 반투명 흰 점은 밝게, 검은 점은 옅게 보인다. 배경 색 전환은 Color Matte 2개 + Cross Dissolve, 점 색 전환은 LP 클립에 Tint 를 걸고 `white` 를 키프레임. `.fcproj` 는 Finder 더블클릭으로 열리지 않고(형식 오류) `open -a FilmCraft --args <경로>` 나 Cmd+O 로 연다.
 - 출력 기본값 3840x2160/30fps, `--duration HH:MM:SS`, `<stem>_seed.txt`·`<stem>_settings.json` 을 같이 저장. 배경 모드 solid·image·radial-gradient·transparent.
 - 같은 채팅 후반의 앨범커버·썸네일(나선 LP) 배경 보정 스크립트들은 가져오지 않았다(이미지 1회성 보정용).
 
