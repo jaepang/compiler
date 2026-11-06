@@ -13,6 +13,8 @@ Approved LP design + four background modes:
 User-controlled parameters:
   - duration (HH:MM:SS)
   - dot color (and --dot-opaque: every dot at full opacity instead of its tone alpha)
+  - --dark-alpha (transparent only): remap alpha so dark dots composited in linear light
+    look like the exact negative of the light-dot render
   - dot alpha / size gain (--dot-alpha-gain, --dot-size-gain; e.g. a dark-dot pass that stays visible on light backgrounds)
   - output resolution
   - FPS
@@ -61,7 +63,7 @@ except ImportError:
     cairo = None
 
 
-SCRIPT_VERSION = "V37-integrated-1.4"
+SCRIPT_VERSION = "V37-integrated-1.5"
 
 # Fixed design render size. Final output may be 4K or another 16:9 size.
 RENDER_W = 1920
@@ -718,6 +720,22 @@ def composite_premult_bgra_over_bgr(fg_bgra: np.ndarray, bg_bgr: np.ndarray) -> 
     return np.clip(out, 0, 255).astype(np.uint8)
 
 
+def _srgb_to_linear(x: np.ndarray) -> np.ndarray:
+    return np.where(x <= 0.04045, x / 12.92, ((x + 0.055) / 1.055) ** 2.4)
+
+
+def _linear_to_srgb(x: np.ndarray) -> np.ndarray:
+    return np.where(x <= 0.0031308, x * 12.92, 1.055 * x ** (1.0 / 2.4) - 0.055)
+
+
+# Light dots over a dark background in a linear-light compositor (FilmCraft) show
+# srgb(a); dark dots over a light one show 1 - srgb(a') = srgb(1 - a'). Picking
+# a' = 1 - lin(1 - srgb(a)) makes the dark pass the exact negative of the light pass.
+_DARK_ALPHA_LUT = np.round(
+    255.0 * (1.0 - _srgb_to_linear(1.0 - _linear_to_srgb(np.arange(256) / 255.0)))
+).astype(np.uint8)
+
+
 def unpremultiply_bgra(fg_bgra: np.ndarray) -> np.ndarray:
     """Cairo premultiplied BGRA -> straight-alpha BGRA (what FFmpeg/ProRes expect)."""
     alpha = fg_bgra[:, :, 3:4].astype(np.float32)
@@ -753,6 +771,8 @@ def resolve_inputs(args):
     if args.dot_alpha_gain <= 0 or args.dot_size_gain <= 0:
         raise ValueError("dot_alpha_gain / dot_size_gain은 0보다 커야 합니다.")
     bg_mode = bg_mode.strip().lower()
+    if args.dark_alpha and bg_mode.strip().lower() != "transparent":
+        raise ValueError("--dark-alpha는 transparent 모드에서만 씁니다.")
     if bg_mode not in BG_MODES:
         raise ValueError("배경 모드는 solid / image / radial-gradient / transparent 중 하나여야 합니다.")
 
@@ -768,6 +788,7 @@ def resolve_inputs(args):
         "dot_opaque": bool(args.dot_opaque),
         "dot_alpha_gain": float(args.dot_alpha_gain),
         "dot_size_gain": float(args.dot_size_gain),
+        "dark_alpha": bool(args.dark_alpha),
         "bg_mode": bg_mode,
     }
 
@@ -869,6 +890,7 @@ def save_settings(settings, output_path: Path, used_fallback: bool):
         "dot_opaque": settings["dot_opaque"],
         "dot_alpha_gain": settings["dot_alpha_gain"],
         "dot_size_gain": settings["dot_size_gain"],
+        "dark_alpha": settings["dark_alpha"],
         "background_mode": settings["bg_mode"],
         "output_resolution": settings["resolution"],
         "render_resolution": f"{RENDER_W}x{RENDER_H}",
@@ -968,6 +990,8 @@ def print_settings(settings, total_frames, used_fallback):
     print(f"시간       : {settings['duration']}")
     print(f"점 색      : {settings['dot']}" + (" (불투명)" if settings["dot_opaque"] else ""))
     print(f"점 배율    : alpha x{settings['dot_alpha_gain']} / size x{settings['dot_size_gain']}")
+    if settings["dark_alpha"]:
+        print("dark alpha : 선형광 합성용 어두운 점 보정")
     print(f"배경 모드  : {settings['bg_mode']}")
 
     if settings["bg_mode"] == "solid":
@@ -1001,6 +1025,8 @@ def main():
     parser.add_argument("--dot", help="#RRGGBB")
     parser.add_argument("--dot-alpha-gain", type=float, default=1.0, help="점 alpha 배율 (1 초과면 상한 0.92 -> 1.0)")
     parser.add_argument("--dot-size-gain", type=float, default=1.0, help="점 반지름 배율")
+    parser.add_argument("--dark-alpha", action="store_true",
+                        help="transparent 전용. 어두운 점이 선형광 편집기에서 흰 점 렌더의 정확한 반전으로 보이게 alpha 를 보정")
     parser.add_argument("--dot-opaque", action="store_true", help="점을 전부 불투명(alpha 1)으로 그린다. 기본은 점마다 톤 alpha(0.01~0.92)")
     parser.add_argument("--resolution", help="예: 3840x2160")
     parser.add_argument("--fps", type=int)
@@ -1070,6 +1096,8 @@ def main():
                                          settings["dot_alpha_gain"], settings["dot_size_gain"])
             if transparent:
                 frame = unpremultiply_bgra(dots_bgra)
+                if settings["dark_alpha"]:
+                    frame[:, :, 3] = _DARK_ALPHA_LUT[frame[:, :, 3]]
             else:
                 frame = composite_premult_bgra_over_bgr(dots_bgra, bg_frame)
             proc.stdin.write(frame.tobytes())
