@@ -13,6 +13,7 @@ Approved LP design + four background modes:
 User-controlled parameters:
   - duration (HH:MM:SS)
   - dot color (and --dot-opaque: every dot at full opacity instead of its tone alpha)
+  - dot alpha / size gain (--dot-alpha-gain, --dot-size-gain; e.g. a dark-dot pass that stays visible on light backgrounds)
   - output resolution
   - FPS
   - seed (blank = random)
@@ -60,7 +61,7 @@ except ImportError:
     cairo = None
 
 
-SCRIPT_VERSION = "V37-integrated-1.3"
+SCRIPT_VERSION = "V37-integrated-1.4"
 
 # Fixed design render size. Final output may be 4K or another 16:9 size.
 RENDER_W = 1920
@@ -478,7 +479,8 @@ def build_background(settings: dict) -> tuple[np.ndarray, bool]:
 # LP dot renderer (transparent Cairo layer)
 # -----------------------------------------------------------------------------
 
-def render_dot_layer(frame_index: int, fps: int, rings, density_data, dot_rgb, opaque: bool = False):
+def render_dot_layer(frame_index: int, fps: int, rings, density_data, dot_rgb, opaque: bool = False,
+                     alpha_gain: float = 1.0, size_gain: float = 1.0):
     if cairo is None:
         raise RuntimeError("pycairo가 설치되어 있지 않습니다. pip install pycairo")
 
@@ -663,6 +665,7 @@ def render_dot_layer(frame_index: int, fps: int, rings, density_data, dot_rgb, o
         radii = np.where(radii > knee, knee + 0.55 * over, radii)
         radii = np.minimum(radii, local_cap)
         radii = np.maximum(radii, 0.22 * DESIGN_SCALE)
+        radii = radii * size_gain
 
         # Keep moving fragment circles from touching into oval-looking blobs.
         radii = limit_fragment_overlap(x, y, radii, frag, q)
@@ -682,6 +685,8 @@ def render_dot_layer(frame_index: int, fps: int, rings, density_data, dot_rgb, o
 
         alpha_values *= np.minimum(1.0, np.maximum(radii, 0.15*DESIGN_SCALE) ** 0.60)
         alpha_values = np.clip(alpha_values, 0.010, 0.92)
+        if alpha_gain != 1.0:
+            alpha_values = np.clip(alpha_values * alpha_gain, 0.010, 1.0)
 
         for px, py, radius, alpha in zip(x, y, radii, alpha_values):
             if (
@@ -745,6 +750,8 @@ def resolve_inputs(args):
         raise ValueError("FPS는 1~120 범위로 입력하세요.")
 
     dot = normalize_hex_color(dot)
+    if args.dot_alpha_gain <= 0 or args.dot_size_gain <= 0:
+        raise ValueError("dot_alpha_gain / dot_size_gain은 0보다 커야 합니다.")
     bg_mode = bg_mode.strip().lower()
     if bg_mode not in BG_MODES:
         raise ValueError("배경 모드는 solid / image / radial-gradient / transparent 중 하나여야 합니다.")
@@ -759,6 +766,8 @@ def resolve_inputs(args):
         "seed": seed,
         "dot": dot,
         "dot_opaque": bool(args.dot_opaque),
+        "dot_alpha_gain": float(args.dot_alpha_gain),
+        "dot_size_gain": float(args.dot_size_gain),
         "bg_mode": bg_mode,
     }
 
@@ -858,6 +867,8 @@ def save_settings(settings, output_path: Path, used_fallback: bool):
         "duration_seconds": settings["duration_sec"],
         "dot_color": settings["dot"],
         "dot_opaque": settings["dot_opaque"],
+        "dot_alpha_gain": settings["dot_alpha_gain"],
+        "dot_size_gain": settings["dot_size_gain"],
         "background_mode": settings["bg_mode"],
         "output_resolution": settings["resolution"],
         "render_resolution": f"{RENDER_W}x{RENDER_H}",
@@ -956,6 +967,7 @@ def print_settings(settings, total_frames, used_fallback):
     print("\n--- 렌더 설정 ---")
     print(f"시간       : {settings['duration']}")
     print(f"점 색      : {settings['dot']}" + (" (불투명)" if settings["dot_opaque"] else ""))
+    print(f"점 배율    : alpha x{settings['dot_alpha_gain']} / size x{settings['dot_size_gain']}")
     print(f"배경 모드  : {settings['bg_mode']}")
 
     if settings["bg_mode"] == "solid":
@@ -987,6 +999,8 @@ def main():
     parser = argparse.ArgumentParser(description="V37 LP 장시간 배경 영상 생성기 (통합 배경 모드)")
     parser.add_argument("--duration", help="HH:MM:SS")
     parser.add_argument("--dot", help="#RRGGBB")
+    parser.add_argument("--dot-alpha-gain", type=float, default=1.0, help="점 alpha 배율 (1 초과면 상한 0.92 -> 1.0)")
+    parser.add_argument("--dot-size-gain", type=float, default=1.0, help="점 반지름 배율")
     parser.add_argument("--dot-opaque", action="store_true", help="점을 전부 불투명(alpha 1)으로 그린다. 기본은 점마다 톤 alpha(0.01~0.92)")
     parser.add_argument("--resolution", help="예: 3840x2160")
     parser.add_argument("--fps", type=int)
@@ -1052,7 +1066,8 @@ def main():
 
     try:
         for i in range(total_frames):
-            dots_bgra = render_dot_layer(i, settings["fps"], rings, density_data, dot_rgb, settings["dot_opaque"])
+            dots_bgra = render_dot_layer(i, settings["fps"], rings, density_data, dot_rgb, settings["dot_opaque"],
+                                         settings["dot_alpha_gain"], settings["dot_size_gain"])
             if transparent:
                 frame = unpremultiply_bgra(dots_bgra)
             else:
