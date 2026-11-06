@@ -9,7 +9,7 @@ Approved LP design + four background modes:
   2) image
   3) radial-gradient (grain + optional LP-area underlay)
   4) transparent (LP only, with alpha — for compositing in an editor;
-     --alpha-codec prores = ProRes 4444 .mov, vp9 = VP9 .webm about 1/8 the size)
+     --alpha-codec prores = ProRes 4444 .mov, vp9 = VP9 .webm about 1/4.5 the size)
 
 User-controlled parameters:
   - duration (HH:MM:SS)
@@ -937,7 +937,7 @@ def save_settings(settings, output_path: Path, used_fallback: bool):
     elif settings["bg_mode"] == "transparent":
         payload["background"] = {
             "mode": "transparent",
-            "codec": "prores_ks 4444 (yuva444p10le)" if settings["alpha_codec"] == "prores" else "libvpx-vp9 crf20 (yuva420p)",
+            "codec": "prores_ks 4444 (yuva444p10le)" if settings["alpha_codec"] == "prores" else "libvpx-vp9 crf20 realtime cpu-used 5, 1s GOP (yuva420p)",
         }
 
     json_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -965,13 +965,18 @@ def start_ffmpeg(output_path: Path, out_w: int, out_h: int, fps: int, transparen
         "-vf", vf,
     ]
     if transparent and alpha_codec == "vp9":
-        # FilmCraft decodes VP9 alpha; crf 20 is visually identical to ProRes at ~1/8 the size.
+        # FilmCraft decodes VP9 alpha. The default "good" deadline encodes at ~4 fps and
+        # becomes the bottleneck; realtime/cpu-used 5 keeps up (~12 fps) at ~1/4.5 of ProRes.
         cmd += [
             "-c:v", "libvpx-vp9",
             "-pix_fmt", "yuva420p",
             "-b:v", "0",
             "-crf", "20",
             "-row-mt", "1",
+            "-tile-columns", "2",
+            "-deadline", "realtime",
+            "-cpu-used", "5",
+            "-g", str(fps),  # 1 s keyframes: FilmCraft seeks took up to 6 s without this
         ]
     elif transparent:
         cmd += [
@@ -1044,7 +1049,7 @@ def main():
     parser.add_argument("--dot", help="#RRGGBB")
     parser.add_argument("--dot-alpha-gain", type=float, default=1.0, help="점 alpha 배율 (1 초과면 상한 0.92 -> 1.0)")
     parser.add_argument("--dot-size-gain", type=float, default=1.0, help="점 반지름 배율")
-    parser.add_argument("--alpha-codec", default="prores", help="transparent 출력 코덱: prores(.mov, 큼) / vp9(.webm, 약 1/8)")
+    parser.add_argument("--alpha-codec", default="prores", help="transparent 출력 코덱: prores(.mov, 큼) / vp9(.webm, 약 1/4.5)")
     parser.add_argument("--dark-alpha", action="store_true",
                         help="transparent 전용. 어두운 점이 선형광 편집기에서 흰 점 렌더의 정확한 반전으로 보이게 alpha 를 보정")
     parser.add_argument("--dot-opaque", action="store_true", help="점을 전부 불투명(alpha 1)으로 그린다. 기본은 점마다 톤 alpha(0.01~0.92)")
