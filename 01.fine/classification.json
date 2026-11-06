@@ -1,7 +1,7 @@
 {
   "playlist": {
     "url": "https://www.youtube.com/playlist?list=PLeRwSHXhNq6s",
-    "title": "욕망은 오랜 병"
+    "title": "fine"
   },
   "items": [
     {
@@ -54,18 +54,6 @@
     },
     {
       "index": 5,
-      "id": "geuVSTwQEHY",
-      "title": "Agog",
-      "name": "데카당-아고그",
-      "channel": "데카당 DECADENT",
-      "duration": 212,
-      "mode": "audio",
-      "reason": "YouTube 자동 생성 음원 (- Topic)",
-      "url": "https://www.youtube.com/watch?v=geuVSTwQEHY",
-      "artist": "데카당"
-    },
-    {
-      "index": 6,
       "id": "rFZ_gTrYr78",
       "title": "Goodbye Seoul",
       "name": "혁오-Goodbye Seoul",
@@ -77,19 +65,19 @@
       "artist": "혁오"
     },
     {
-      "index": 7,
-      "id": "1HG_O7H1NbM",
-      "title": "The Lights Behind You",
-      "name": "SURL-The Lights Behind You",
-      "channel": "SURL / 설",
-      "duration": 313,
+      "index": 6,
+      "id": "ICyMUMyGckA",
+      "title": "15 Years Old",
+      "name": "유라-15 Years Old",
+      "channel": "youra 유라",
+      "duration": 204,
       "mode": "audio",
       "reason": "YouTube 자동 생성 음원 (- Topic)",
-      "url": "https://www.youtube.com/watch?v=1HG_O7H1NbM",
-      "artist": "SURL"
+      "url": "https://www.youtube.com/watch?v=ICyMUMyGckA",
+      "artist": "유라"
     },
     {
-      "index": 8,
+      "index": 7,
       "id": "yzgbi62XYtM",
       "title": "nouvelle vague",
       "name": "wave to earth-nouvelle vague",
@@ -99,6 +87,18 @@
       "reason": "YouTube 자동 생성 음원 (- Topic)",
       "url": "https://www.youtube.com/watch?v=yzgbi62XYtM",
       "artist": "wave to earth"
+    },
+    {
+      "index": 8,
+      "id": "ueZj0Yk3VyI",
+      "title": "Hallucination (feat. Samui)",
+      "name": "놀이도감-Hallucination (feat. Samui)",
+      "channel": "Noridogam",
+      "duration": 256,
+      "mode": "audio",
+      "reason": "YouTube 자동 생성 음원 (- Topic)",
+      "url": "https://www.youtube.com/watch?v=ueZj0Yk3VyI",
+      "artist": "놀이도감"
     },
     {
       "index": 9,

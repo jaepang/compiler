@@ -15,7 +15,7 @@ compiler/
   test_build_timeline.py  ffmpeg 로 초소형 미디어를 합성해 build_timeline 검증 (python3 test_build_timeline.py)
   fixture_meta.json     19곡 실제 메타데이터 (제목/채널/설명/태그/기대 파일명) — 테스트용
   README.md, requirements.txt(선택 의존성 pillow 만)
-  01.욕망은오랜병/       재생목록 1개 = 폴더 1개, "{nn}.{재생목록이름}" 규칙
+  01.fine/       재생목록 1개 = 폴더 1개, "{nn}.{재생목록이름}" 규칙
     downloads/          {nn}.{아티스트}-{영상명}.{확장자} (공백은 _)  — 음원·영상 구분 없이 한 폴더 (gitignore)
     archive_audio.txt, archive_video.txt   yt-dlp --download-archive (모드별, 재실행 시 중복 방지. 머신 로컬 상태 — gitignore)
     classification.json                    영상별 분류·파일명 결과표 = 복원 매니페스트 {"playlist": {url,title}, "items": [...]} — 커밋 대상
@@ -37,7 +37,7 @@ compiler/
 
 ```bash
 python3 playlist_dl.py --restore --cookies-from-browser chrome
-python3 playlist_dl.py --restore 01.욕망은오랜병 --cookies-from-browser chrome
+python3 playlist_dl.py --restore 01.fine --cookies-from-browser chrome
 ```
 
 - DIR 생략 시 현재 폴더의 `*/classification.json` 을 찾아 curses TUI 로 고른다 (`전부 복원` 행, space 토글, a 전부, Enter 확정, q 취소). tty 가 아니면 DIR 을 요구한다.
@@ -50,8 +50,8 @@ python3 playlist_dl.py --restore 01.욕망은오랜병 --cookies-from-browser ch
 영상 제작 파이프라인의 다음 칸. 매니페스트 순서대로 DaVinci Resolve 에 일렬로 들어가는 FCPXML 1.8 을 만든다 (크로스페이드 없음 — 재광님 결정. 곡 간격만 `--gap`).
 
 ```bash
-python3 build_timeline.py 01.욕망은오랜병
-python3 build_timeline.py 01.욕망은오랜병 --fps 25 --gap 1.0
+python3 build_timeline.py 01.fine
+python3 build_timeline.py 01.fine --fps 25 --gap 1.0
 ```
 
 - `build/timeline.fcpxml`: 1920x1080, `--fps` 24/25/30/60(기본 30). 음원 곡은 스파인에 커버 정지 이미지(`<video>`, asset duration 0s) + `lane="-1"` 에 음원 `<asset-clip>`, 영상 곡은 mp4 `<asset-clip>`. 곡마다 `nn 아티스트 - 곡명` 마커. 길이는 ffprobe 실측을 프레임으로 반올림, 경로는 `file://` 절대경로.
@@ -67,9 +67,9 @@ python3 build_timeline.py 01.욕망은오랜병 --fps 25 --gap 1.0
 음원 편집은 DAW 에서 먼저 하고 싶다는 요청(2026-09-08). 처음엔 Reaper(.rpp 평문 생성·파싱)로 만들었지만 재광님이 GarageBand 로 결정해 Reaper 부분은 폐기(앱은 dotfiles cask 에서 빼고 rebuild 로 제거). GarageBand 는 프로젝트 생성도, 마커 내보내기도 안 되므로 **내보낸 믹스에서 곡 경계를 복원**하는 방식이다.
 
 ```bash
-python3 build_daw.py 01.욕망은오랜병                                   # build/daw/{audio/*.wav, video/*.mp4} + 순서표
-python3 build_daw.py 01.욕망은오랜병 --align build/daw/mix.wav          # 경계 복원 미리보기 → build/daw/cues.json
-python3 build_timeline.py 01.욕망은오랜병 --audio build/daw/mix.wav [--cues build/daw/cues.json]
+python3 build_daw.py 01.fine                                   # build/daw/{audio/*.wav, video/*.mp4} + 순서표
+python3 build_daw.py 01.fine --align build/daw/mix.wav          # 경계 복원 미리보기 → build/daw/cues.json
+python3 build_timeline.py 01.fine --audio build/daw/mix.wav [--cues build/daw/cues.json]
 ```
 
 - `build_daw.build`: 19곡 48kHz/24bit WAV(영상 곡은 오디오만, ~1.5GB), 영상 곡은 `-map 0:v:0 -an -c copy` 로 무음 mp4(임베드 커버 png 스트림 제외). 소스 mtime 보다 새 산출물은 건너뛴다.
@@ -86,7 +86,7 @@ python3 build_timeline.py 01.욕망은오랜병 --audio build/daw/mix.wav [--cue
 
 ```bash
 python3 .claude/skills/band-sync/scripts/band.py status
-python3 .claude/skills/band-sync/scripts/band.py adopt 01.욕망은오랜병     # 이 맥의 실제 .band → iCloud + 링크
+python3 .claude/skills/band-sync/scripts/band.py adopt 01.fine     # 이 맥의 실제 .band → iCloud + 링크
 python3 .claude/skills/band-sync/scripts/band.py link                      # 다른 맥: 링크 생성 + iCloud 다운로드 강제
 ```
 
@@ -147,7 +147,9 @@ python3 playlist_dl.py --cookies-from-browser chrome             # 다운로드
 
 ## 1번 재생목록 상태 (완료)
 
-- '욕망은 오랜 병' (PLeRwSHXhNq6s, 송드리퍼, 19곡) — 19/19 다운로드 완료, ffprobe 로 길이·코덱·태그 검증 완료.
+- 'fine' (PLeRwSHXhNq6s, 송드리퍼, 19곡) — 19/19 다운로드 완료, ffprobe 로 길이·코덱·태그 검증 완료.
+- 2026-11-06 재생목록이 '욕망은 오랜 병' → 'fine' 으로 이름이 바뀌고 곡이 교체됨: 05 데카당-아고그·07 SURL-The Lights Behind You 빠짐, 06 유라-15 Years Old·08 놀이도감-Hallucination 추가, 혁오-Goodbye Seoul 06→05·wave to earth 08→07. 폴더를 `01.fine/` 로 옮기고(iCloud `.band` 도 `01.fine/01.fine.band`), 빠진 곡 파일은 rename·삭제, 새 곡만 받았다. GarageBand 프로젝트 안의 곡은 직접 교체해야 한다.
+- Chrome 쿠키가 만료되면 프리미엄 141(256k) 대신 140(128k)이 골라진다 — 받기 전 `yt-dlp -F` 로 141 이 보이는지 확인.
 - video 2곡: 12 Nothing But Thieves Live at The O2 (1080p), 14 Muse Stockholm Syndrome Wembley (480p, 2008 업로드 — 원본 한계로 추정, `yt-dlp -F 9wV9_je85DE` 로 확인 가능)
 - audio 17곡: 16곡 AAC 256k, 18 빈도시 인스트만 128k(그 영상의 AAC 최고치)
 - 분류 규칙을 바꾸거나 오버라이드를 추가해 다시 받을 때는 archive_*.txt 에서 해당 ID 줄을 지워야 재다운로드된다.

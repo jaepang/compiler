@@ -2,8 +2,8 @@
 """
 build_daw.py — GarageBand 에서 음원을 선편집하기 위한 소스 준비와, 내보낸 믹스에서 곡 경계 복원.
 
-  python3 build_daw.py 01.욕망은오랜병                          # build/daw/audio/*.wav, build/daw/video/*.mp4 준비 + 순서표 출력
-  python3 build_daw.py 01.욕망은오랜병 --align build/daw/mix.wav   # GarageBand 로 내보낸 믹스에서 곡 경계 복원 → build/daw/cues.json
+  python3 build_daw.py 01.fine                          # build/daw/audio/*.wav, build/daw/video/*.mp4 준비 + 순서표 출력
+  python3 build_daw.py 01.fine --align build/daw/mix.wav   # GarageBand 로 내보낸 믹스에서 곡 경계 복원 → build/daw/cues.json
 
 산출물 (build/ 는 gitignore, 언제든 재생성):
   daw/audio/{nn}.{어간}.wav   19곡 전부 48kHz/24bit WAV (영상 곡은 오디오만) — GarageBand 에 순서대로 끌어다 놓는다

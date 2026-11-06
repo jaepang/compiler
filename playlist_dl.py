@@ -35,12 +35,12 @@ playlist_dl.py — YouTube 재생목록을 '음원 / 영상'으로 자동 분류
     (Muse - Stockholm Syndrome [Live …] → Muse-Stockholm Syndrome [Live …]). 틀리면 ARTIST_OVERRIDES 에 적는다.
 
 사용 예 (compiler 폴더에서 실행):
-  python3 playlist_dl.py --cookies-from-browser chrome      # → ./01.욕망은오랜병/downloads/
+  python3 playlist_dl.py --cookies-from-browser chrome      # → ./01.fine/downloads/
   python3 playlist_dl.py --dry-run                          # 분류 결과·파일명·선택될 포맷만 출력
   python3 playlist_dl.py --only 17WFr1WGtrA                 # 특정 영상만
   python3 playlist_dl.py --restore                          # 다른 머신에서: 프로젝트를 골라(TUI) 매니페스트대로 그대로 다시 받기
-  python3 playlist_dl.py --restore 01.욕망은오랜병           # 특정 프로젝트만. 재생목록 조회·분류 없이 기록된 파일명·모드 그대로
-  python3 playlist_dl.py --rename 01.욕망은오랜병 --dry-run  # 파일명 규칙이 바뀐 뒤: 기존 파일·매니페스트를 새 규칙으로 (미리보기)
+  python3 playlist_dl.py --restore 01.fine           # 특정 프로젝트만. 재생목록 조회·분류 없이 기록된 파일명·모드 그대로
+  python3 playlist_dl.py --rename 01.fine --dry-run  # 파일명 규칙이 바뀐 뒤: 기존 파일·매니페스트를 새 규칙으로 (미리보기)
   python3 playlist_dl.py --video-container mkv --audio-codec best   # 호환성 대신 최고 품질(VP9/AV1, opus) 우선
   python3 playlist_dl.py --yt-dlp /opt/homebrew/bin/yt-dlp  # PATH 에 없을 때 실행 파일 지정
 
@@ -66,8 +66,8 @@ from pathlib import Path
 
 # --------------------------------------------------------------------------- 설정
 
-PLAYLIST_URL = "https://www.youtube.com/playlist?list=PLeRwSHXhNq6s"  # 욕망은 오랜 병
-DEFAULT_OUT = "01.욕망은오랜병"  # compiler 폴더 기준 상대 경로. 실제 파일은 이 아래 downloads/ 에 저장
+PLAYLIST_URL = "https://www.youtube.com/playlist?list=PLeRwSHXhNq6s"  # fine (구 욕망은 오랜 병)
+DEFAULT_OUT = "01.fine"  # compiler 폴더 기준 상대 경로. 실제 파일은 이 아래 downloads/ 에 저장
 
 # 수동 오버라이드: 자동 판별이 애매하거나 틀린 영상은 여기에 적어 두면 항상 우선한다.
 # 값은 "audio" 또는 "video". (2026-09-07 재생목록 19곡을 직접 확인해서 정리)
@@ -741,7 +741,7 @@ def rename_main(ytdlp: str, args) -> int:
 
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("url", nargs="?", default=PLAYLIST_URL, help="재생목록 URL (기본: 욕망은 오랜 병)")
+    p.add_argument("url", nargs="?", default=PLAYLIST_URL, help="재생목록 URL (기본: fine)")
     p.add_argument("--out", default=DEFAULT_OUT, help=f"대상 폴더 (기본: ./{DEFAULT_OUT}). 파일은 그 아래 downloads/ 에 저장")
     p.add_argument("--yt-dlp", dest="ytdlp", metavar="PATH", help="yt-dlp 실행 파일 (기본: PATH 에서 검색)")
     p.add_argument("--dry-run", action="store_true", help="다운로드 없이 분류 결과·파일명·선택 포맷만 출력")

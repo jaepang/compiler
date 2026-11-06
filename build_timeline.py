@@ -2,9 +2,9 @@
 """
 build_timeline.py — 매니페스트(classification.json)대로 DaVinci Resolve 용 타임라인 템플릿을 만든다.
 
-  python3 build_timeline.py 01.욕망은오랜병                 # → 01.욕망은오랜병/build/
-  python3 build_timeline.py 01.욕망은오랜병 --fps 25 --gap 1.0
-  python3 build_timeline.py 01.욕망은오랜병 --audio build/daw/mix.wav [--cues build/daw/cues.json]   # GarageBand 선편집 결과 반영 (mix 모드)
+  python3 build_timeline.py 01.fine                 # → 01.fine/build/
+  python3 build_timeline.py 01.fine --fps 25 --gap 1.0
+  python3 build_timeline.py 01.fine --audio build/daw/mix.wav [--cues build/daw/cues.json]   # GarageBand 선편집 결과 반영 (mix 모드)
 
 mix 모드: GarageBand 로 내보낸 믹스를 --audio 로 주면 build_daw.align_cues 가 믹스에서 곡 경계(시작·길이·앞 트림)를 복원해
   build/daw/cues.json 에 저장하고(--cues 로 손으로 고친 파일을 대신 줄 수 있다), A1 = mix 한 클립(스파인),

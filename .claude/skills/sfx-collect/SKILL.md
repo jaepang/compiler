@@ -67,7 +67,7 @@ sfx/
   manifest.json          커밋. items[]: id, kind, category, tags, file, source, source_id, page_url, download_url, license,
                          attribution_required, attribution, duration, sample_rate, added, note
   vinyl/…  film/…  nature/…  room/…   오디오 (gitignore). category 는 소리 성격 기준 짧은 영문 폴더명
-01.욕망은오랜병/
+01.fine/
   sfx.json               커밋. {"sounds": [id, …]} — 이 영상이 쓰는 소리
   sfx/<id>.<ext>         ../../sfx/<category>/<file> 로의 상대 심볼릭 링크 (gitignore, `sfx.py link --project` 로 재생성)
 ```
