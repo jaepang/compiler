@@ -23,6 +23,7 @@ compiler/
     *.band                                 GarageBand 프로젝트 — 원본은 iCloud Drive compiler/<프로젝트>/, 여기엔 심볼릭 링크(gitignore, `band.py link` 로 재생성). 내보낸 믹스는 build/daw/mix.wav
   sfx/                  효과음 라이브러리 (영상 여러 개에 재사용). 오디오는 gitignore, sfx/manifest.json(출처·라이선스·크레딧)만 커밋
     (프로젝트)/sfx.json                    그 영상이 쓰는 소리 id 목록 — 커밋. (프로젝트)/sfx/ 는 sfx/ 원본으로의 상대 심볼릭 링크(gitignore, `sfx.py link --project` 로 재생성)
+  bg/                   LP 점묘 배경 영상 생성기 (ChatGPT 세션에서 만든 V37 통합본). lp_density_reference.png 가 같은 폴더에 있어야 함. preview/ 는 gitignore
   .claude/skills/band-sync/    .band 를 iCloud 원본 + 링크로 관리 (status·adopt·link)
   .claude/skills/sfx-collect/  효과음 수집 스킬 — ego-browser 로 Mixkit·Pixabay·Freesound 에서 찾아 받고 sfx.py 로 등록. 사이트별 레시피는 references/sites.md
 ```
@@ -163,6 +164,14 @@ LP 바늘·필름 프로젍터 루프·파도 같은 사운드스케이프를 �
 - 소리는 라이브러리에 두고 영상 프로젝트에는 `sfx.py link <id> --project 01.xxx` 로 상대 심볼릭 링크(`01.xxx/sfx/`)를 만든다. 사용 목록은 `01.xxx/sfx.json` 에 커밋. 스킬은 등록 후 어느 프로젍트에 연결할지 묻는다(2026-09-09 결정). 테스트: `python3 .claude/skills/sfx-collect/scripts/test_sfx.py`.
 - 검증된 사실: Mixkit 은 `assets.mixkit.co/active_storage/sfx/<id>/<id>.wav` 직링크(WAV 만), Pixabay 는 쿠키 모달 거절 후 `Page.setDownloadBehavior` + "Free download" 클릭으로 mp3, Freesound 는 CC0 필터 검색·`-hq.mp3` 프리뷰는 비로그인, 원본은 로그인 handoff.
 - 아직 안 한 것: description.md 크레딧 섹션에 `sfx.py credits` 결과를 자동으로 붙이는 연결.
+
+## 배경 영상 생성기 (`bg/`)
+
+ChatGPT 프로젝트 'compiler 첫 영상' 의 '유튜브 배경 영상 제작' 채팅에서 만든 회전 LP 점묘 애니메이션 생성기(2026-10-05, V37 통합본)를 2026-11-06 에 가져왔다. 디자인은 재광님이 확정한 상태라 LP 본체·파편은 재설계하지 않는다 — 맥락과 금지사항은 `bg/HANDOFF_LP_V37.md`.
+
+- 의존성: numpy·opencv-python·pycairo + ffmpeg. Nix python3 엔 pip 가 없어 아직 로컬에서 한 번도 안 돌려봤다(ChatGPT 샌드박스에서 640x360·1초 smoke 만 통과).
+- 출력 기본값 3840x2160/30fps, `--duration HH:MM:SS`, `<stem>_seed.txt`·`<stem>_settings.json` 을 같이 저장. 배경 모드 solid·image·radial-gradient.
+- 같은 채팅 후반의 앨범커버·썸네일(나선 LP) 배경 보정 스크립트들은 가져오지 않았다(이미지 1회성 보정용).
 
 ## 남은 것 / 메모
 

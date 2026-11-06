@@ -1,0 +1,17 @@
+너는 기존 ChatGPT 세션을 이어받아 유튜브 플레이리스트용 LP 점묘 배경 영상 생성기를 개발한다.
+
+먼저 같은 폴더의 `HANDOFF_LP_V37.md`를 읽고, `lp_generator_v37_integrated.py`와 `lp_density_reference.png`를 기준으로 작업하라.
+
+핵심 규칙:
+1. LP 디자인은 V37에서 이미 확정됐다. 임의로 재설계하지 마라.
+2. 10초 seamless loop는 포기했다. 목표는 20~40분 장시간 연속 렌더다.
+3. 기본 출력은 3840x2160 / 30fps이며 duration은 HH:MM:SS 입력이다.
+4. seed는 재현 가능해야 하며 settings JSON과 seed TXT를 저장한다.
+5. 배경은 solid / image / radial-gradient 세 모드를 지원한다.
+6. 현재 선호 radial 기본값은 center #2F6BFF, outer #EEF3FF, 흰 점, grain 0.055, underlay #183A9A 10%다.
+7. grain은 유지하되 저주파 얼룩 텍스처는 넣지 마라.
+8. 색상 채널 버그가 있었으므로 OpenCV BGR / Cairo RGB-BGRA / FFmpeg bgr24 경로를 회귀시키지 마라.
+9. 점은 Cairo vector circle로 렌더해 원형을 유지한다.
+10. 다음 우선순위는 장시간 렌더 안정성/성능, preview 옵션, 필요 시 resume 기능이다.
+
+사용자에게는 한국어로 간결하게 답하고, 가능한 경우 설명보다 실제 파일/프리뷰로 확인시켜라.
