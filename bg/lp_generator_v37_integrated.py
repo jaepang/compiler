@@ -8,7 +8,8 @@ Approved LP design + four background modes:
   1) solid
   2) image
   3) radial-gradient (grain + optional LP-area underlay)
-  4) transparent (LP only, ProRes 4444 .mov with alpha — for compositing in an editor)
+  4) transparent (LP only, with alpha — for compositing in an editor;
+     --alpha-codec prores = ProRes 4444 .mov, vp9 = VP9 .webm about 1/8 the size)
 
 User-controlled parameters:
   - duration (HH:MM:SS)
@@ -30,7 +31,7 @@ Required companion file in the same folder:
   - lp_density_reference.png
 
 Outputs:
-  - <output>.mp4 (<output>.mov for transparent mode)
+  - <output>.mp4 (transparent mode: <output>.mov, or <output>.webm with --alpha-codec vp9)
   - <output_stem>_settings.json
   - <output_stem>_seed.txt
 
@@ -63,7 +64,7 @@ except ImportError:
     cairo = None
 
 
-SCRIPT_VERSION = "V37-integrated-1.5"
+SCRIPT_VERSION = "V37-integrated-1.6"
 
 # Fixed design render size. Final output may be 4K or another 16:9 size.
 RENDER_W = 1920
@@ -132,6 +133,7 @@ NAMED_COLORS = {
 }
 
 BG_MODES = {"solid", "image", "radial-gradient", "transparent"}
+ALPHA_CODECS = {"prores": ".mov", "vp9": ".webm"}
 IMAGE_FITS = {"cover", "contain", "stretch"}
 
 
@@ -771,6 +773,8 @@ def resolve_inputs(args):
     if args.dot_alpha_gain <= 0 or args.dot_size_gain <= 0:
         raise ValueError("dot_alpha_gain / dot_size_gain은 0보다 커야 합니다.")
     bg_mode = bg_mode.strip().lower()
+    if args.alpha_codec not in ALPHA_CODECS:
+        raise ValueError("--alpha-codec는 prores / vp9 중 하나여야 합니다.")
     if args.dark_alpha and bg_mode.strip().lower() != "transparent":
         raise ValueError("--dark-alpha는 transparent 모드에서만 씁니다.")
     if bg_mode not in BG_MODES:
@@ -789,6 +793,7 @@ def resolve_inputs(args):
         "dot_alpha_gain": float(args.dot_alpha_gain),
         "dot_size_gain": float(args.dot_size_gain),
         "dark_alpha": bool(args.dark_alpha),
+        "alpha_codec": args.alpha_codec,
         "bg_mode": bg_mode,
     }
 
@@ -866,8 +871,8 @@ def resolve_inputs(args):
         if not (0.0 <= settings["radial_underlay_opacity"] <= 1.0):
             raise ValueError("radial_underlay_opacity는 0~1 범위여야 합니다.")
 
-    # Transparent mode needs an alpha-capable container/codec: ProRes 4444 in .mov.
-    suffix = ".mov" if bg_mode == "transparent" else ".mp4"
+    # Transparent mode needs an alpha-capable container/codec: ProRes 4444 .mov or VP9 .webm.
+    suffix = ALPHA_CODECS[args.alpha_codec] if bg_mode == "transparent" else ".mp4"
     out_path = Path(output)
     if out_path.suffix.lower() != suffix:
         out_path = out_path.with_suffix(suffix)
@@ -930,14 +935,18 @@ def save_settings(settings, output_path: Path, used_fallback: bool):
             "underlay_opacity": settings["radial_underlay_opacity"],
         }
     elif settings["bg_mode"] == "transparent":
-        payload["background"] = {"mode": "transparent", "codec": "prores_ks 4444 (yuva444p10le)"}
+        payload["background"] = {
+            "mode": "transparent",
+            "codec": "prores_ks 4444 (yuva444p10le)" if settings["alpha_codec"] == "prores" else "libvpx-vp9 crf20 (yuva420p)",
+        }
 
     json_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     seed_path.write_text(str(settings["seed"]) + "\n", encoding="utf-8")
     return json_path, seed_path
 
 
-def start_ffmpeg(output_path: Path, out_w: int, out_h: int, fps: int, transparent: bool = False):
+def start_ffmpeg(output_path: Path, out_w: int, out_h: int, fps: int, transparent: bool = False,
+                 alpha_codec: str = "prores"):
     ffmpeg = shutil.which("ffmpeg")
     if not ffmpeg:
         raise RuntimeError("FFmpeg를 찾을 수 없습니다. FFmpeg를 설치하고 PATH에 추가하세요.")
@@ -955,7 +964,16 @@ def start_ffmpeg(output_path: Path, out_w: int, out_h: int, fps: int, transparen
         "-an",
         "-vf", vf,
     ]
-    if transparent:
+    if transparent and alpha_codec == "vp9":
+        # FilmCraft decodes VP9 alpha; crf 20 is visually identical to ProRes at ~1/8 the size.
+        cmd += [
+            "-c:v", "libvpx-vp9",
+            "-pix_fmt", "yuva420p",
+            "-b:v", "0",
+            "-crf", "20",
+            "-row-mt", "1",
+        ]
+    elif transparent:
         cmd += [
             "-c:v", "prores_ks",
             "-profile:v", "4444",
@@ -1010,7 +1028,8 @@ def print_settings(settings, total_frames, used_fallback):
         print(f"grain      : {settings['radial_grain']}")
         print(f"underlay   : {settings['radial_underlay']} @ {settings['radial_underlay_opacity']}")
     elif settings["bg_mode"] == "transparent":
-        print("배경       : 없음 (알파 채널, ProRes 4444 .mov)")
+        codec = "ProRes 4444 .mov" if settings["alpha_codec"] == "prores" else "VP9 .webm"
+        print(f"배경       : 없음 (알파 채널, {codec})")
 
     print(f"출력       : {settings['resolution']} / {settings['fps']} fps")
     print(f"Seed       : {settings['seed']}")
@@ -1025,6 +1044,7 @@ def main():
     parser.add_argument("--dot", help="#RRGGBB")
     parser.add_argument("--dot-alpha-gain", type=float, default=1.0, help="점 alpha 배율 (1 초과면 상한 0.92 -> 1.0)")
     parser.add_argument("--dot-size-gain", type=float, default=1.0, help="점 반지름 배율")
+    parser.add_argument("--alpha-codec", default="prores", help="transparent 출력 코덱: prores(.mov, 큼) / vp9(.webm, 약 1/8)")
     parser.add_argument("--dark-alpha", action="store_true",
                         help="transparent 전용. 어두운 점이 선형광 편집기에서 흰 점 렌더의 정확한 반전으로 보이게 alpha 를 보정")
     parser.add_argument("--dot-opaque", action="store_true", help="점을 전부 불투명(alpha 1)으로 그린다. 기본은 점마다 톤 alpha(0.01~0.92)")
@@ -1082,7 +1102,8 @@ def main():
     print_settings(settings, total_frames, used_fallback)
     json_path, seed_path = save_settings(settings, settings["output"], used_fallback)
     transparent = settings["bg_mode"] == "transparent"
-    proc = start_ffmpeg(settings["output"], settings["out_w"], settings["out_h"], settings["fps"], transparent)
+    proc = start_ffmpeg(settings["output"], settings["out_w"], settings["out_h"], settings["fps"], transparent,
+                        settings["alpha_codec"])
 
     if proc.stdin is None:
         raise RuntimeError("FFmpeg stdin을 열지 못했습니다.")
