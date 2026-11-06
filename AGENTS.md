@@ -23,7 +23,7 @@ compiler/
     *.band                                 GarageBand 프로젝트 — 원본은 iCloud Drive compiler/<프로젝트>/, 여기엔 심볼릭 링크(gitignore, `band.py link` 로 재생성). 내보낸 믹스는 build/daw/mix.wav
   sfx/                  효과음 라이브러리 (영상 여러 개에 재사용). 오디오는 gitignore, sfx/manifest.json(출처·라이선스·크레딧)만 커밋
     (프로젝트)/sfx.json                    그 영상이 쓰는 소리 id 목록 — 커밋. (프로젝트)/sfx/ 는 sfx/ 원본으로의 상대 심볼릭 링크(gitignore, `sfx.py link --project` 로 재생성)
-  bg/                   LP 점묘 배경 영상 생성기 (ChatGPT 세션에서 만든 V37 통합본). lp_density_reference.png 가 같은 폴더에 있어야 함. preview/ 는 gitignore
+  bg/                   LP 점묘 배경 영상 생성기 (ChatGPT 세션에서 만든 V37 통합본). lp_density_reference.png 가 같은 폴더에 있어야 함. preview/·.venv/·.nix-python 은 gitignore
   .claude/skills/band-sync/    .band 를 iCloud 원본 + 링크로 관리 (status·adopt·link)
   .claude/skills/sfx-collect/  효과음 수집 스킬 — ego-browser 로 Mixkit·Pixabay·Freesound 에서 찾아 받고 sfx.py 로 등록. 사이트별 레시피는 references/sites.md
 ```
@@ -169,8 +169,18 @@ LP 바늘·필름 프로젍터 루프·파도 같은 사운드스케이프를 �
 
 ChatGPT 프로젝트 'compiler 첫 영상' 의 '유튜브 배경 영상 제작' 채팅에서 만든 회전 LP 점묘 애니메이션 생성기(2026-10-05, V37 통합본)를 2026-11-06 에 가져왔다. 디자인은 재광님이 확정한 상태라 LP 본체·파편은 재설계하지 않는다 — 맥락과 금지사항은 `bg/HANDOFF_LP_V37.md`.
 
-- 의존성: numpy·opencv-python·pycairo + ffmpeg. Nix python3 엔 pip 가 없어 아직 로컬에서 한 번도 안 돌려봤다(ChatGPT 샌드박스에서 640x360·1초 smoke 만 통과).
-- 출력 기본값 3840x2160/30fps, `--duration HH:MM:SS`, `<stem>_seed.txt`·`<stem>_settings.json` 을 같이 저장. 배경 모드 solid·image·radial-gradient.
+- 의존성: numpy·opencv-python·pycairo + ffmpeg. pycairo 는 macOS wheel 이 없고 시스템 cairo 가 없어 pip 빌드가 실패한다(nix cairo 로 빌드해도 xcb 헤더 요구). 그래서 venv 를 nix 의 pycairo 가 든 Python 위에 만든다 — `.nix-python` 은 GC root 라 지우지 않는다:
+  ```bash
+  cd bg
+  nix build --out-link .nix-python --impure --expr 'let p = (builtins.getFlake "nixpkgs").legacyPackages.aarch64-darwin; in p.python312.withPackages (ps: [ ps.pycairo ])'
+  uv venv --system-site-packages --python .nix-python/bin/python3 .venv
+  uv pip install --python .venv/bin/python numpy opencv-python
+  .venv/bin/python lp_generator_v37_integrated.py --duration 00:00:05 --resolution 1920x1080 --seed 12345 --dot "#FFFFFF" --bg-mode radial-gradient --output preview/test/radial_5s.mp4
+  ```
+  nix 의 opencv4 는 바이너리 캐시가 없어 소스 빌드(10분+)라 pip wheel 을 쓴다.
+- 2026-11-06 로컬 검증: 1920x1080/30fps 5초 렌더가 약 10fps(투명 모드 약 8.7fps) — 30분 영상은 실시간의 3배 남짓 걸린다(4K 출력도 렌더는 1080p 고정이라 비슷, 인코딩만 늘어남). ChatGPT 기준 프리뷰와 같은 디자인으로 나오는 것을 프레임 비교로 확인.
+- `--bg-mode transparent`(2026-11-06 추가): 배경 없이 LP 만, ProRes 4444 `.mov`(yuva444p, 알파)로 내보낸다. Cairo 의 premultiplied BGRA 를 straight alpha 로 되돌려 ffmpeg 에 `bgra` 로 넘긴다. 단색 위에 overlay 해 알파가 살아 있음을 확인. **용량 주의**: 1080p 5초에 293MB(약 59MB/s) → 30분이면 1080p 로도 100GB 대. Resolve 에서 아직 import 안 해봤다.
+- 출력 기본값 3840x2160/30fps, `--duration HH:MM:SS`, `<stem>_seed.txt`·`<stem>_settings.json` 을 같이 저장. 배경 모드 solid·image·radial-gradient·transparent.
 - 같은 채팅 후반의 앨범커버·썸네일(나선 LP) 배경 보정 스크립트들은 가져오지 않았다(이미지 1회성 보정용).
 
 ## 남은 것 / 메모

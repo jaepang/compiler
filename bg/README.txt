@@ -24,5 +24,6 @@ FFmpeg도 PATH에 설치되어 있어야 합니다.
 - solid
 - image
 - radial-gradient
+- transparent (배경 없이 LP 만, ProRes 4444 .mov 알파 채널 — 편집기에서 다른 배경 위에 합성용. 용량이 매우 큼)
 
 자세한 프로젝트 맥락은 HANDOFF_LP_V37.md 참고.

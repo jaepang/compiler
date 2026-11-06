@@ -4,10 +4,11 @@
 """
 V37 LP playlist background generator — integrated edition
 ==========================================================
-Approved LP design + three background modes:
+Approved LP design + four background modes:
   1) solid
   2) image
   3) radial-gradient (grain + optional LP-area underlay)
+  4) transparent (LP only, ProRes 4444 .mov with alpha — for compositing in an editor)
 
 User-controlled parameters:
   - duration (HH:MM:SS)
@@ -26,7 +27,7 @@ Required companion file in the same folder:
   - lp_density_reference.png
 
 Outputs:
-  - <output>.mp4
+  - <output>.mp4 (<output>.mov for transparent mode)
   - <output_stem>_settings.json
   - <output_stem>_seed.txt
 
@@ -59,7 +60,7 @@ except ImportError:
     cairo = None
 
 
-SCRIPT_VERSION = "V37-integrated-1.1"
+SCRIPT_VERSION = "V37-integrated-1.2"
 
 # Fixed design render size. Final output may be 4K or another 16:9 size.
 RENDER_W = 1920
@@ -127,7 +128,7 @@ NAMED_COLORS = {
     "파란색": "#2F6BFF",
 }
 
-BG_MODES = {"solid", "image", "radial-gradient"}
+BG_MODES = {"solid", "image", "radial-gradient", "transparent"}
 IMAGE_FITS = {"cover", "contain", "stretch"}
 
 
@@ -468,6 +469,8 @@ def build_background(settings: dict) -> tuple[np.ndarray, bool]:
         return build_image_background(settings)
     if mode == "radial-gradient":
         return build_radial_background(settings), False
+    if mode == "transparent":
+        return None, False
     raise ValueError(f"알 수 없는 배경 모드: {mode}")
 
 
@@ -710,13 +713,23 @@ def composite_premult_bgra_over_bgr(fg_bgra: np.ndarray, bg_bgr: np.ndarray) -> 
     return np.clip(out, 0, 255).astype(np.uint8)
 
 
+def unpremultiply_bgra(fg_bgra: np.ndarray) -> np.ndarray:
+    """Cairo premultiplied BGRA -> straight-alpha BGRA (what FFmpeg/ProRes expect)."""
+    alpha = fg_bgra[:, :, 3:4].astype(np.float32)
+    color = fg_bgra[:, :, :3].astype(np.float32) * 255.0 / np.maximum(alpha, 1.0)
+    out = np.empty_like(fg_bgra)
+    out[:, :, :3] = np.clip(color, 0, 255).astype(np.uint8)
+    out[:, :, 3:4] = fg_bgra[:, :, 3:4]
+    return out
+
+
 def resolve_inputs(args):
     duration = args.duration or prompt(DEFAULT_DURATION, "재생 시간 HH:MM:SS")
     resolution = args.resolution or prompt(DEFAULT_RESOLUTION, "출력 해상도")
     fps_text = str(args.fps) if args.fps is not None else prompt(str(DEFAULT_FPS), "FPS")
     output = args.output or prompt(DEFAULT_OUTPUT, "출력 파일명")
     dot = args.dot or prompt(DEFAULT_DOT, "점 색 #RRGGBB")
-    bg_mode = args.bg_mode or prompt(DEFAULT_BG_MODE, "배경 모드 (solid / image / radial-gradient)")
+    bg_mode = args.bg_mode or prompt(DEFAULT_BG_MODE, "배경 모드 (solid / image / radial-gradient / transparent)")
 
     if args.seed is None:
         seed_text = input("Seed [Enter = 랜덤 생성]: ").strip()
@@ -734,7 +747,7 @@ def resolve_inputs(args):
     dot = normalize_hex_color(dot)
     bg_mode = bg_mode.strip().lower()
     if bg_mode not in BG_MODES:
-        raise ValueError("배경 모드는 solid / image / radial-gradient 중 하나여야 합니다.")
+        raise ValueError("배경 모드는 solid / image / radial-gradient / transparent 중 하나여야 합니다.")
 
     settings = {
         "duration": duration,
@@ -822,9 +835,11 @@ def resolve_inputs(args):
         if not (0.0 <= settings["radial_underlay_opacity"] <= 1.0):
             raise ValueError("radial_underlay_opacity는 0~1 범위여야 합니다.")
 
+    # Transparent mode needs an alpha-capable container/codec: ProRes 4444 in .mov.
+    suffix = ".mov" if bg_mode == "transparent" else ".mp4"
     out_path = Path(output)
-    if out_path.suffix.lower() != ".mp4":
-        out_path = out_path.with_suffix(".mp4")
+    if out_path.suffix.lower() != suffix:
+        out_path = out_path.with_suffix(suffix)
     settings["output"] = out_path
 
     return settings
@@ -879,13 +894,15 @@ def save_settings(settings, output_path: Path, used_fallback: bool):
             "underlay_color": settings["radial_underlay"],
             "underlay_opacity": settings["radial_underlay_opacity"],
         }
+    elif settings["bg_mode"] == "transparent":
+        payload["background"] = {"mode": "transparent", "codec": "prores_ks 4444 (yuva444p10le)"}
 
     json_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     seed_path.write_text(str(settings["seed"]) + "\n", encoding="utf-8")
     return json_path, seed_path
 
 
-def start_ffmpeg(output_path: Path, out_w: int, out_h: int, fps: int):
+def start_ffmpeg(output_path: Path, out_w: int, out_h: int, fps: int, transparent: bool = False):
     ffmpeg = shutil.which("ffmpeg")
     if not ffmpeg:
         raise RuntimeError("FFmpeg를 찾을 수 없습니다. FFmpeg를 설치하고 PATH에 추가하세요.")
@@ -896,19 +913,30 @@ def start_ffmpeg(output_path: Path, out_w: int, out_h: int, fps: int):
         "-y",
         "-loglevel", "warning",
         "-f", "rawvideo",
-        "-pix_fmt", "bgr24",
+        "-pix_fmt", "bgra" if transparent else "bgr24",
         "-s", f"{RENDER_W}x{RENDER_H}",
         "-r", str(fps),
         "-i", "-",
         "-an",
         "-vf", vf,
-        "-c:v", "libx264",
-        "-preset", "medium",
-        "-crf", "18",
-        "-pix_fmt", "yuv420p",
-        "-movflags", "+faststart",
-        str(output_path),
     ]
+    if transparent:
+        cmd += [
+            "-c:v", "prores_ks",
+            "-profile:v", "4444",
+            "-pix_fmt", "yuva444p10le",
+            "-alpha_bits", "16",
+            "-vendor", "apl0",
+        ]
+    else:
+        cmd += [
+            "-c:v", "libx264",
+            "-preset", "medium",
+            "-crf", "18",
+            "-pix_fmt", "yuv420p",
+            "-movflags", "+faststart",
+        ]
+    cmd.append(str(output_path))
     return subprocess.Popen(cmd, stdin=subprocess.PIPE, bufsize=10**7)
 
 
@@ -943,6 +971,8 @@ def print_settings(settings, total_frames, used_fallback):
         print(f"range/curve: {settings['radial_start']} -> {settings['radial_end']} / {settings['radial_curve']}")
         print(f"grain      : {settings['radial_grain']}")
         print(f"underlay   : {settings['radial_underlay']} @ {settings['radial_underlay_opacity']}")
+    elif settings["bg_mode"] == "transparent":
+        print("배경       : 없음 (알파 채널, ProRes 4444 .mov)")
 
     print(f"출력       : {settings['resolution']} / {settings['fps']} fps")
     print(f"Seed       : {settings['seed']}")
@@ -960,7 +990,7 @@ def main():
     parser.add_argument("--seed", type=int)
     parser.add_argument("--output", help="output.mp4")
 
-    parser.add_argument("--bg-mode", help="solid / image / radial-gradient")
+    parser.add_argument("--bg-mode", help="solid / image / radial-gradient / transparent")
     parser.add_argument("--bg", help="solid 배경색 #RRGGBB")
 
     parser.add_argument("--bg-image", help="배경 이미지 경로")
@@ -1008,7 +1038,8 @@ def main():
 
     print_settings(settings, total_frames, used_fallback)
     json_path, seed_path = save_settings(settings, settings["output"], used_fallback)
-    proc = start_ffmpeg(settings["output"], settings["out_w"], settings["out_h"], settings["fps"])
+    transparent = settings["bg_mode"] == "transparent"
+    proc = start_ffmpeg(settings["output"], settings["out_w"], settings["out_h"], settings["fps"], transparent)
 
     if proc.stdin is None:
         raise RuntimeError("FFmpeg stdin을 열지 못했습니다.")
@@ -1019,8 +1050,11 @@ def main():
     try:
         for i in range(total_frames):
             dots_bgra = render_dot_layer(i, settings["fps"], rings, density_data, dot_rgb)
-            frame_bgr = composite_premult_bgra_over_bgr(dots_bgra, bg_frame)
-            proc.stdin.write(frame_bgr.tobytes())
+            if transparent:
+                frame = unpremultiply_bgra(dots_bgra)
+            else:
+                frame = composite_premult_bgra_over_bgr(dots_bgra, bg_frame)
+            proc.stdin.write(frame.tobytes())
 
             now = time.time()
             if now - last_print >= 2.0 or i == total_frames - 1:

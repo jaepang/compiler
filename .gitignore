@@ -34,3 +34,5 @@ sfx/*
 
 # 배경 영상 생성기 프리뷰 (ChatGPT 세션 산출물, 용량 큼)
 bg/preview/
+bg/.venv/
+bg/.nix-python
