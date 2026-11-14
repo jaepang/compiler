@@ -18,6 +18,8 @@
 
 - `assets/intro_headphones.png`: 인트로용 헤드폰 그림. 1254x1254, 검은 배경에 흰 손그림 선(알파 없음). ChatGPT 이미지 생성(2026-09-08). 배경이 검정 단색이라 배경색을 바꾸려면 밝기를 알파로 쓰거나(screen/add 합성) 반전해서 쓴다.
 
+- `assets/fine_frame.png`: 1920x1080 검정 화면 한가운데 흰 `Fine`(Times New Roman Bold Italic 180pt, 악보 지시어처럼 굵은 기울임 세리프). `magick -size 1920x1080 xc:black -font "/System/Library/Fonts/Supplemental/Times New Roman Bold Italic.ttf" -pointsize 180 -fill white -gravity center -annotate +0+0 "Fine" fine_frame.png` 로 만들었다(이 맥의 ffmpeg 에 drawtext 가 없음). 특정 시점에 LP 화면에서 디졸브 없이 이 프레임으로 바로 컷한다(2026-11-15 재광님 결정). 미리보기 `bg/preview/fine/lp_to_fine.mp4`(LP 6초 → Fine 4초, gitignore).
+
 ## 곡 (19곡, 1:29:42)
 
 순서와 대략의 시작 시각은 `build/description.md` 의 Tracklist 에 있다(믹스 전 기준이라 실제 위치는 믹스에서 다시 잡는다). 사이드 경계는 아직 정하지 않았다 — 곡 번호로 나눌지, 믹스에 무음 구간을 둘지 재광님이 정한다.
