@@ -20,7 +20,8 @@
 
 - `assets/fine_frame.png`: 1920x1080 검정 화면 한가운데 흰 `Fine`(Times New Roman Bold Italic 180pt, 악보 지시어처럼 굵은 기울임 세리프). `magick -size 1920x1080 xc:black -font "/System/Library/Fonts/Supplemental/Times New Roman Bold Italic.ttf" -pointsize 180 -fill white -gravity center -annotate +0+0 "Fine" fine_frame.png` 로 만들었다(이 맥의 ffmpeg 에 drawtext 가 없음). 특정 시점에 LP 화면에서 디졸브 없이 이 프레임으로 바로 컷한다(2026-11-15 재광님 결정). 미리보기 `bg/preview/fine/lp_to_fine.mp4`(gitignore).
 - `assets/verse24.png`·`verse25.png`: Fine 뒤에 띄우는 로마서 7:24·25(개역개정) 투명 레이어. `assets/verse_frames.sh` 로 만든다 — 왼쪽 칸 `Romans 7:24`(Times New Roman Italic), 오른쪽 칸 말씀(본명조 Noto Serif KR 42pt, 1300px 에서 줄바꿈). 25절이 나올 때 24절이 움직이지 않도록 두 장 모두 최종 위치에 배치돼 있다. 말씀 본문은 기억으로 넣어 대한성서공회 본문과 대조가 필요하다.
-- Fine 이후 순서(2026-11-15 재광님 결정): LP → (컷) Fine → Fine 디졸브 아웃 → 24절 디졸브 인 → 25절 디졸브 인(24절 아래, 둘 다 남음). 미리보기 길이는 Fine 3초 + 아웃 1초, 검정 0.5초, 24절 인 1초 + 3초, 25절 인 1초 + 5.5초 — 확정값은 아니다.
+- `assets/john3_3.png`: 그다음 화면인 요한복음 3:3(`John 3:3`) 레이어. 같은 스크립트·같은 가로 위치, 혼자 세로 가운데.
+- Fine 이후 순서(2026-11-15 재광님 결정): LP → (컷) Fine → Fine 디졸브 아웃 → 24절 디졸브 인 → 25절 디졸브 인(24절 아래, 둘 다 남음) → 로마서 디졸브 아웃 → 요한복음 3:3 디졸브 인. 미리보기 길이는 Fine 3초 + 아웃 1초, 검정 0.5초, 24절 인 1초 + 3초, 25절 인 1초 + 5.5초 — 확정값은 아니다.
 
 ## 곡 (19곡, 1:29:42)
 
