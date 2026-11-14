@@ -1,0 +1,37 @@
+#!/bin/sh
+# Fine 뒤에 띄우는 로마서 7:24·25(개역개정) 레이어. 1920x1080 투명 PNG 두 장을 만든다 —
+# 25절이 나타날 때 24절이 움직이지 않도록 둘 다 최종 위치에 미리 배치해 둔다.
+set -eu
+cd "$(dirname "$0")"
+
+SERIF="/System/Library/Fonts/Supplemental/Times New Roman Italic.ttf"
+MYEONGJO="$HOME/Library/Fonts/NotoSerifKR[wght].ttf"   # 본명조 (Noto Serif KR, OFL)
+[ -f "$MYEONGJO" ] || MYEONGJO="/Library/Fonts/NotoSerifKR[wght].ttf"
+SIZE=42
+REF_W=290      # "Romans 7:24" 칸
+TEXT_W=1300    # 말씀 칸 (넘치면 줄바꿈)
+GAP=56         # 24절과 25절 사이
+TMP=$(mktemp -d)
+trap 'rm -rf "$TMP"' EXIT
+
+V24="오호라 나는 곤고한 사람이로다 이 사망의 몸에서 누가 나를 건져내랴"
+V25="우리 주 예수 그리스도로 말미암아 하나님께 감사하리로다 그런즉 나 자신이 마음으로는 하나님의 법을, 육신으로는 죄의 법을 섬기노라"
+
+block() {  # $1 ref, $2 text, $3 out
+  magick -background none -fill white -font "$SERIF" -pointsize $SIZE \
+    label:"$1" -gravity west -extent ${REF_W}x "$TMP/ref.png"  # -size 를 주면 label 이 칸에 맞춰 글자를 키운다
+  magick -background none -fill white -font "$MYEONGJO" -pointsize $SIZE \
+    -interline-spacing 18 -size ${TEXT_W}x caption:"$2" "$TMP/text.png"
+  magick "$TMP/ref.png" "$TMP/text.png" -background none -gravity north +append "$3"
+}
+block "Romans 7:24" "$V24" "$TMP/b24.png"
+block "Romans 7:25" "$V25" "$TMP/b25.png"
+
+H24=$(magick identify -format %h "$TMP/b24.png")
+H25=$(magick identify -format %h "$TMP/b25.png")
+X=$(( (1920 - REF_W - TEXT_W) / 2 ))
+Y24=$(( (1080 - H24 - GAP - H25) / 2 ))
+Y25=$(( Y24 + H24 + GAP ))
+
+magick -size 1920x1080 xc:none "$TMP/b24.png" -geometry +$X+$Y24 -composite verse24.png
+magick -size 1920x1080 xc:none "$TMP/b25.png" -geometry +$X+$Y25 -composite verse25.png
