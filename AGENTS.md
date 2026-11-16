@@ -21,10 +21,11 @@ compiler/
     classification.json                    영상별 분류·파일명 결과표 = 복원 매니페스트 {"playlist": {url,title}, "items": [...]} — 커밋 대상
     build/                                 build_timeline.py 산출물 — 절대경로 포함, 매니페스트에서 재생성 (gitignore)
     *.band                                 GarageBand 프로젝트 — 원본은 iCloud Drive compiler/<프로젝트>/, 여기엔 심볼릭 링크(gitignore, `band.py link` 로 재생성). 내보낸 믹스는 build/daw/mix.wav
+    filmcraft/*.fcproj                     FilmCraft 프로젝트 — 커밋. 소재는 filmcraft/media/ (iCloud 원본 링크, gitignore) 를 "media/…" 상대경로로 참조
   sfx/                  효과음 라이브러리 (영상 여러 개에 재사용). 오디오는 gitignore, sfx/manifest.json(출처·라이선스·크레딧)만 커밋
     (프로젝트)/sfx.json                    그 영상이 쓰는 소리 id 목록 — 커밋. (프로젝트)/sfx/ 는 sfx/ 원본으로의 상대 심볼릭 링크(gitignore, `sfx.py link --project` 로 재생성)
   bg/                   LP 점묘 배경 영상 생성기 (ChatGPT 세션에서 만든 V37 통합본). lp_density_reference.png 가 같은 폴더에 있어야 함. preview/·.venv/·.nix-python 은 gitignore
-  .claude/skills/band-sync/    .band 를 iCloud 원본 + 링크로 관리 (status·adopt·link)
+  .claude/skills/band-sync/    .band·FilmCraft 소재를 iCloud 원본 + 링크로 관리 (status·adopt·link·verify)
   .claude/skills/sfx-collect/  효과음 수집 스킬 — ego-browser 로 Mixkit·Pixabay·Freesound 에서 찾아 받고 sfx.py 로 등록. 사이트별 레시피는 references/sites.md
 ```
 
@@ -89,11 +90,14 @@ python3 build_timeline.py 01.fine --audio build/daw/mix.wav [--cues build/daw/cu
 python3 .claude/skills/band-sync/scripts/band.py status
 python3 .claude/skills/band-sync/scripts/band.py adopt 01.fine     # 이 맥의 실제 .band → iCloud + 링크
 python3 .claude/skills/band-sync/scripts/band.py link                      # 다른 맥: 링크 생성 + iCloud 다운로드 강제
+python3 .claude/skills/band-sync/scripts/band.py verify --wait 600         # 이 맥에서 iCloud 로 실제 업로드됐는지
 ```
 
 - GarageBand 실행 중엔 adopt/link 가 멈춘다. 같은 프로젝트를 두 맥에서 동시에 열지 않는다(iCloud 충돌 사본).
 - `diverged`(레포 쪽이 실제 폴더로 바뀜)는 자동으로 고치지 않는다 — 어느 쪽이 최신인지 사람이 고른다.
 - 링크 경로로 열어 저장해도 링크가 유지되고 iCloud 원본의 `ProjectData` 가 갱신됨을 확인(2026-10-16, 01번). 다른 맥에서 `link` 로 받아 여는 것은 아직 안 해봤다.
+- **2026-11-16 사고**: 다른 맥에서 01번 .band 가 iCloud 에 보이지 않았다. 원인은 이 맥의 iCloud Drive 데몬 `com.apple.bird` 가 launchd 에서 disabled 라 compiler 폴더가 만들어진 뒤로 한 번도 업로드되지 않은 것(`fileproviderctl evaluate` 의 `uploadingError` 가 bird 연결 실패). 링크가 정상이어도 업로드는 따로 확인해야 하므로 adopt 뒤에는 `verify` 를 돌린다. `.band` 패키지는 iCloud 에서 항목 하나라 안쪽 파일은 조회되지 않고 패키지 루트로 판단한다.
+- **FilmCraft 프로젝트**: `.fcproj` 는 수 KB JSON 이라 `<프로젝트>/filmcraft/` 에 커밋하고, 소재(투명 LP .mov 등, 수백 MB)만 `<프로젝트>/filmcraft/media/` → iCloud `compiler/<프로젝트>/filmcraft/media` 링크로 둔다. FilmCraft 는 소재 경로를 `.fcproj` 위치 기준 상대경로로 풀고(cwd 무관, 링크를 거쳐도 됨), CLI `--save` 도 상대경로를 유지한다(2026-11-16 headless 렌더로 원본과 픽셀 일치 확인). GUI 에서 새 소재를 import 하면 절대경로로 들어갈 수 있어(INFERRED) `status` 가 절대경로를 경고하고, `adopt` 가 그 소재를 media/ 로 복사하고 상대경로로 바꾼다. FilmCraft 실행 중엔 adopt/link 가 멈춘다.
 
 ## 실행 (반드시 로컬 터미널 — 프리미엄 쿠키가 Chrome 에 있음)
 
@@ -181,10 +185,10 @@ ChatGPT 프로젝트 'compiler 첫 영상' 의 '유튜브 배경 영상 제작' 
 - 2026-11-06 로컬 검증: 1920x1080/30fps 5초 렌더가 약 10fps(투명 모드 약 8.7fps) — 30분 영상은 실시간의 3배 남짓 걸린다(4K 출력도 렌더는 1080p 고정이라 비슷, 인코딩만 늘어남). ChatGPT 기준 프리뷰와 같은 디자인으로 나오는 것을 프레임 비교로 확인.
 - `--bg-mode transparent`(2026-11-06 추가): 배경 없이 LP 만, ProRes 4444 `.mov`(yuva444p, 알파)로 내보낸다. Cairo 의 premultiplied BGRA 를 straight alpha 로 되돌려 ffmpeg 에 `bgra` 로 넘긴다. 단색 위에 overlay 해 알파가 살아 있음을 확인. **용량 주의**: 1080p 5초에 293MB(약 59MB/s) → 30분이면 1080p 로도 100GB 대. Resolve 에서 아직 import 안 해봤다.
 - `--dot-opaque`(2026-11-06 추가): 점마다 쓰던 톤 alpha(0.01~0.92, 중앙값 약 0.26)를 버리고 전부 alpha 1 로 그린다(가장자리 안티앨리어싱만 남음). 편집기에서 점 색을 어둡게 바꿀 때 필요 — 원래 alpha 로는 흰 배경 위 검은 점이 밝기 223 정도로 거의 안 보였다. 디자인의 농담이 사라지므로 기본값은 그대로 둔다.
-- `--dot-alpha-gain`·`--dot-size-gain`(2026-11-06 추가): 점 alpha(배율 1 초과 시 상한 0.92→1.0)와 반지름 배율. 어두운 점 패스용 — 흰 점은 원본 그대로, 검은 점은 `--dot "#000000" --dot-alpha-gain 2 --dot-size-gain 1.3` 으로 따로 렌더해 편집기에서 두 LP 클립을 크로스 디졸브한다(`bg/preview/filmcraft/test_two_lp.fcproj`). 비교 그리드 `bg/preview/gain/grid_dark_on_white.png`(alpha 1/2/3/opaque × size 1/1.3/1.6). 값은 아직 재광님이 확정하지 않았다.
+- `--dot-alpha-gain`·`--dot-size-gain`(2026-11-06 추가): 점 alpha(배율 1 초과 시 상한 0.92→1.0)와 반지름 배율. 어두운 점 패스용 — 흰 점은 원본 그대로, 검은 점은 `--dot "#000000" --dot-alpha-gain 2 --dot-size-gain 1.3` 으로 따로 렌더해 편집기에서 두 LP 클립을 크로스 디졸브한다(`01.fine/filmcraft/test_two_lp.fcproj`). 비교 그리드 `bg/preview/gain/grid_dark_on_white.png`(alpha 1/2/3/opaque × size 1/1.3/1.6). 값은 아직 재광님이 확정하지 않았다.
 - `--alpha-codec vp9`(2026-11-07 추가): transparent 출력을 VP9 WebM(yuva420p, crf 20, realtime cpu-used 5, 1초 GOP)으로. ProRes 의 약 1/4.5 크기(1분 833MB vs 3.68GB)에 FilmCraft 가 알파를 읽고 화면 차이 평균 0.43. good deadline 은 더 작지만(1/8) 인코딩이 초당 4프레임이라 병목, GOP 를 안 주면 FilmCraft 탐색이 최대 6초. HEVC 알파(videotoolbox)는 FilmCraft 에서 알파가 깨진다. 수치 전체는 `01.fine/VIDEO.md` 필요 자원 절.
-- `--dark-alpha`(2026-11-06 추가, transparent 전용): 배율은 점마다 똑같이 곱해서 외곽의 옅은 점이 여전히 안 보였다. 선형광 편집기에서 흰 점은 srgb(a) 로 보이고 검은 점은 srgb(1-a') 로 보이므로, 최종 알파를 픽셀 단위로 a' = 1 - lin(1 - srgb(a)) 로 바꿔 검은 점 패스를 흰 점 화면의 정확한 반전으로 만든다(`--dot "#000000" --dark-alpha`, 배율은 1). FilmCraft 렌더가 흰 점 화면 반전과 평균 0.54 단계 차이로 일치, 외곽(반지름 450px 이상) 점 밝기 중앙값 202→174. `bg/preview/filmcraft/test_two_lp_mirror.fcproj`.
-- FilmCraft(dotfiles cask `filmcraft` + `filmcraft-cli`) 합성 테스트(2026-11-06, `bg/preview/filmcraft/`): straight alpha 를 정확히 읽는다(배경 픽셀 일치, 가장자리 오차 0.3~0.4 단계). 단 합성·디졸브를 **선형광**으로 해서 생성기(감마 합성, `composite_premult_bgra_over_bgr`)보다 반투명 흰 점은 밝게, 검은 점은 옅게 보인다. 배경 색 전환은 Color Matte 2개 + Cross Dissolve, 점 색 전환은 LP 클립에 Tint 를 걸고 `white` 를 키프레임. `.fcproj` 는 Finder 더블클릭으로 열리지 않고(형식 오류) `open -a FilmCraft --args <경로>` 나 Cmd+O 로 연다.
+- `--dark-alpha`(2026-11-06 추가, transparent 전용): 배율은 점마다 똑같이 곱해서 외곽의 옅은 점이 여전히 안 보였다. 선형광 편집기에서 흰 점은 srgb(a) 로 보이고 검은 점은 srgb(1-a') 로 보이므로, 최종 알파를 픽셀 단위로 a' = 1 - lin(1 - srgb(a)) 로 바꿔 검은 점 패스를 흰 점 화면의 정확한 반전으로 만든다(`--dot "#000000" --dark-alpha`, 배율은 1). FilmCraft 렌더가 흰 점 화면 반전과 평균 0.54 단계 차이로 일치, 외곽(반지름 450px 이상) 점 밝기 중앙값 202→174. `01.fine/filmcraft/test_two_lp_mirror.fcproj`.
+- FilmCraft(dotfiles cask `filmcraft` + `filmcraft-cli`) 합성 테스트(2026-11-06, 프로젝트는 `01.fine/filmcraft/*.fcproj`, 렌더 비교 이미지는 `bg/preview/filmcraft/`): straight alpha 를 정확히 읽는다(배경 픽셀 일치, 가장자리 오차 0.3~0.4 단계). 단 합성·디졸브를 **선형광**으로 해서 생성기(감마 합성, `composite_premult_bgra_over_bgr`)보다 반투명 흰 점은 밝게, 검은 점은 옅게 보인다. 배경 색 전환은 Color Matte 2개 + Cross Dissolve, 점 색 전환은 LP 클립에 Tint 를 걸고 `white` 를 키프레임. `.fcproj` 는 Finder 더블클릭으로 열리지 않고(형식 오류) `open -a FilmCraft --args <경로>` 나 Cmd+O 로 연다.
 - 출력 기본값 3840x2160/30fps, `--duration HH:MM:SS`, `<stem>_seed.txt`·`<stem>_settings.json` 을 같이 저장. 배경 모드 solid·image·radial-gradient·transparent.
 - 같은 채팅 후반의 앨범커버·썸네일(나선 LP) 배경 보정 스크립트들은 가져오지 않았다(이미지 1회성 보정용).
 

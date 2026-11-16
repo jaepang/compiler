@@ -36,3 +36,5 @@ sfx/*
 bg/preview/
 bg/.venv/
 bg/.nix-python
+# FilmCraft 소재 — .fcproj 는 커밋, 큰 소재(media/)는 iCloud 원본 + 심볼릭 링크(.claude/skills/band-sync)
+*/filmcraft/media

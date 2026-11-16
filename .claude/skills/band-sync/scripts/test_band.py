@@ -70,5 +70,40 @@ try:
     band("link", "--force")
 finally:
     busy.kill()
+env["BAND_APP_NAME"] = "NoSuchApp-band-test"; env["BAND_FC_APP_NAME"] = "NoSuchApp-fc-test"
+
+print("== FilmCraft: 절대경로 소재 → adopt 가 media/ 를 iCloud 로 옮기고 상대경로로 ==")
+import json, shutil
+shutil.rmtree(link); band("link", "01.첫영상")                                      # diverged 정리
+fc = p1 / "filmcraft"; (fc / "media").mkdir(parents=True)
+(fc / "media/inside.mov").write_bytes(b"MOV1")                                      # 이미 media/ 안
+outside = tmp / "preview/outside.mov"; outside.parent.mkdir(); outside.write_bytes(b"MOV22")  # media/ 밖
+proj = {"project": {"items": [{"path": str(fc / "media/inside.mov")}, {"path": str(outside)}, {"path": "media/inside.mov"}]}}
+(fc / "t.fcproj").write_text(json.dumps(proj), encoding="utf-8")
+out = band("status"); assert "local     01.첫영상/filmcraft/media" in out and "절대경로" in out, out
+out = band("adopt", "01.첫영상")
+mcloud = cloud / "01.첫영상/filmcraft/media"
+assert (fc / "media").is_symlink() and (fc / "media").resolve() == mcloud.resolve(), out
+assert (mcloud / "outside.mov").read_bytes() == b"MOV22" and outside.exists(), out   # 밖의 소재는 복사(원본 유지)
+paths = [r["path"] for r in json.loads((fc / "t.fcproj").read_text())["project"]["items"]]
+assert paths == ["media/inside.mov", "media/outside.mov", "media/inside.mov"], paths
+out = band("status"); assert "linked    01.첫영상/filmcraft/media" in out and "!" not in out, out
+outside.write_bytes(b"different")                                                    # 같은 이름, 다른 내용 → 거부
+(fc / "u.fcproj").write_text(json.dumps({"path": str(outside)}), encoding="utf-8")
+band("adopt", "01.첫영상", ok=False); (fc / "u.fcproj").unlink()
+
+print("== FilmCraft: 다른 기기 흉내 — link 가 media 링크를 다시 만든다 ==")
+(fc / "media").unlink()
+assert "unlinked  01.첫영상/filmcraft/media" in band("status")
+out = band("link", "01.첫영상"); assert (fc / "media").resolve() == mcloud.resolve() and "filmcraft/media  다운로드 완료" in out, out
+
+print("== verify: 업로드 상태 (가짜 fileproviderctl) ==")
+fake = tmp / "fpctl"
+fake.write_text('#!/bin/sh\ncase "$2" in *outside*) printf \'isUploaded = 0;\\nuploadingError = "no network";\\n\';; *) echo "isUploaded = 1;";; esac\n')
+fake.chmod(0o755); env["BAND_FPCTL"] = str(fake)
+out = band("verify", "01.첫영상", ok=False)
+assert "업로드 완료 6/7" in out and "outside.mov" in out and "no network" in out, out   # icloud, 프로젝트, .band, filmcraft, media, 파일 2
+(mcloud / "outside.mov").rename(mcloud / "ok.mov")
+assert "업로드 완료 7/7" in band("verify", "01.첫영상")
 
 print("OK")

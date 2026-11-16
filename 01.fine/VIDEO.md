@@ -72,7 +72,7 @@
 
 ## LP 색 처리에서 정해진 것
 
-FilmCraft 테스트(`bg/preview/filmcraft/`)로 확인한 내용. 자세한 수치는 `AGENTS.md` 의 `bg/` 절.
+FilmCraft 테스트(`filmcraft/*.fcproj`)로 확인한 내용. 자세한 수치는 `AGENTS.md` 의 `bg/` 절.
 
 - **밝은 점**: 원래 디자인 그대로(`--dot "#FFFFFF"`). FilmCraft 의 선형광 합성으로 본 모습이 재광님이 만족한 기준이다.
 - **어두운 점**: `--dot "#000000" --dark-alpha`. 밝은 점 화면을 정확히 반전한 밝기가 나오도록 알파를 보정한다. 그냥 색만 바꾸면(Tint) 반투명 점이 대부분이라 거의 안 보이고, 배율(`--dot-alpha-gain`·`--dot-size-gain`)은 외곽의 옅은 점이 살아나지 않았다. `--dark-alpha` 결과를 재광님이 "딱 좋다"고 확정.
