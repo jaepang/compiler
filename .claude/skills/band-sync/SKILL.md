@@ -22,7 +22,7 @@ FilmCraft 도 같은 방식이다. `.fcproj` 는 작아서 `<프로젝트>/filmc
 
 **새 .band 를 iCloud 로 올리기** — GarageBand 로 레포 프로젝트 폴더 안에 새로 만든 경우: 앱을 종료하게 한 뒤 `band.py adopt <프로젝트>`. 같은 볼륨 안 이동이라 복사가 없다.
 
-**업로드 확인** ("iCloud 에 올라갔어?", 다른 맥에서 안 보인다고 할 때, adopt 직후) — `band.py verify [프로젝트] --wait 600`. 링크가 `linked` 여도 업로드는 따로 실패할 수 있다(2026-11-16: iCloud Drive 데몬 bird 가 꺼져 있어 한 달 가까이 아무것도 안 올라감). exit 1 이면 미업로드 항목과 오류를 그대로 보고한다. bird 오류면 사용자에게 `launchctl enable gui/$(id -u)/com.apple.bird && launchctl kickstart gui/$(id -u)/com.apple.bird` 를 직접 실행하게 한다(시스템 설정 변경이라 에이전트가 하지 않는다).
+**업로드 확인** ("iCloud 에 올라갔어?", 다른 맥에서 안 보인다고 할 때, adopt 직후) — `band.py verify [프로젝트] --wait 600`. 링크가 `linked` 여도 업로드는 따로 실패할 수 있다(2026-11-16: iCloud Drive 데몬 bird 가 꺼져 있어 한 달 가까이 아무것도 안 올라감). exit 1 이면 미업로드 항목과 오류를 그대로 보고한다. bird 오류면 사용자에게 `launchctl enable gui/$(id -u)/com.apple.bird` 와 `launchctl bootstrap gui/$(id -u) /System/Library/LaunchAgents/com.apple.bird.plist` 를 직접 실행하게 한다(시스템 설정 변경이라 에이전트가 하지 않는다). bird 가 뜬 뒤에도 같은 오류가 남아 진전이 없으면 이미 실패한 항목이 예전 오류를 붙들고 있는 것이다 — 앱을 닫은 상태에서 iCloud 의 `compiler` 폴더 이름을 잠깐 바꿨다 되돌리면 다시 올라간다(2026-11-16 확인).
 
 **FilmCraft 프로젝트 공유** — `.fcproj` 를 `<프로젝트>/filmcraft/` 에 두고 FilmCraft 를 종료한 뒤 `band.py adopt <프로젝트>`: media/ 를 iCloud 로 옮기고, 절대경로 소재는 media/ 로 복사해 상대경로로 바꾼다. 그다음 `.fcproj` 를 커밋·푸시하고 `verify`. 다른 맥은 `git pull` + `band.py link`.
 

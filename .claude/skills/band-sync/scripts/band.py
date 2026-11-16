@@ -337,7 +337,8 @@ def cmd_verify(a: argparse.Namespace) -> int:
     for e in errs:
         print(f"  ! 업로드 오류: {e}")
     if any("com.apple.bird" in e for e in errs):
-        print("  → iCloud Drive 데몬(bird)이 꺼져 있다: launchctl print-disabled gui/$(id -u) | grep bird 로 확인")
+        print("  → iCloud Drive 데몬(bird) 연결 실패: launchctl print-disabled gui/$(id -u) | grep bird 로 확인."
+              " bird 가 이미 떠 있는데도 이 오류면 예전 실패가 남은 것 — iCloud 의 compiler 폴더 이름을 잠깐 바꿨다 되돌린다")
     return 1 if bad else 0
 
 
