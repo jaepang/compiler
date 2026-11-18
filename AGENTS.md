@@ -154,6 +154,7 @@ python3 playlist_dl.py --cookies-from-browser chrome             # 다운로드
 
 - 'fine' (PLeRwSHXhNq6s, 송드리퍼, 19곡) — 19/19 다운로드 완료, ffprobe 로 길이·코덱·태그 검증 완료.
 - 2026-11-06 재생목록이 '욕망은 오랜 병' → 'fine' 으로 이름이 바뀌고 곡이 교체됨: 05 데카당-아고그·07 SURL-The Lights Behind You 빠짐, 06 유라-15 Years Old·08 놀이도감-Hallucination 추가, 혁오-Goodbye Seoul 06→05·wave to earth 08→07. 폴더를 `01.fine/` 로 옮기고(iCloud `.band` 도 `01.fine/01.fine.band`), 빠진 곡 파일은 rename·삭제, 새 곡만 받았다. GarageBand 프로젝트 안의 곡은 직접 교체해야 한다.
+- 2026-11-19 사이드별 프로젝트로 나눔: iCloud `01.fine/01.fine.band` → `01.fine_A.band`, 이를 복제해 `01.fine_B/C/D.band`(곡 구성은 `01.fine/VIDEO.md` 곡 절). 다른 맥의 옛 `01.fine.band` 링크는 깨진 상태가 되므로 지우고 `band.py link 01.fine` 을 다시 돌린다.
 - Chrome 쿠키가 만료되면 프리미엄 141(256k) 대신 140(128k)이 골라진다 — 받기 전 `yt-dlp -F` 로 141 이 보이는지 확인.
 - video 2곡: 12 Nothing But Thieves Live at The O2 (1080p), 14 Muse Stockholm Syndrome Wembley (480p, 2008 업로드 — 원본 한계로 추정, `yt-dlp -F 9wV9_je85DE` 로 확인 가능)
 - audio 17곡: 16곡 AAC 256k, 18 빈도시 인스트만 128k(그 영상의 AAC 최고치)
