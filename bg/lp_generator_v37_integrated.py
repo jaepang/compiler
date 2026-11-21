@@ -17,6 +17,8 @@ User-controlled parameters:
   - --dark-alpha (transparent only): remap alpha so dark dots composited in linear light
     look like the exact negative of the light-dot render
   - dot alpha / size gain (--dot-alpha-gain, --dot-size-gain; e.g. a dark-dot pass that stays visible on light backgrounds)
+  - scatter ramp (--scatter-start, --scatter-end, --scatter-curve): multiplies how far the fragments
+    scatter, from the start value at the first frame to the end value at the last (default 1 -> 1 = approved V37)
   - output resolution
   - FPS
   - seed (blank = random)
@@ -64,7 +66,7 @@ except ImportError:
     cairo = None
 
 
-SCRIPT_VERSION = "V37-integrated-1.6"
+SCRIPT_VERSION = "V37-integrated-1.7"
 
 # Fixed design render size. Final output may be 4K or another 16:9 size.
 RENDER_W = 1920
@@ -187,6 +189,22 @@ def hex_to_bgr_u8(hex_color: str) -> np.ndarray:
 def smoothstep01(x):
     x = np.clip(x, 0.0, 1.0)
     return x * x * (3.0 - 2.0 * x)
+
+
+SCATTER_CURVES = ("linear", "ease-in", "smooth")
+
+
+def scatter_gain_at(settings, frame_index: int, total_frames: int) -> float:
+    """Scatter multiplier for this frame, ramped from scatter_start to scatter_end over the video."""
+    start, end = settings["scatter_start"], settings["scatter_end"]
+    if start == end:
+        return start
+    p = frame_index / max(total_frames - 1, 1)
+    if settings["scatter_curve"] == "ease-in":
+        p = p * p
+    elif settings["scatter_curve"] == "smooth":
+        p = p * p * (3.0 - 2.0 * p)
+    return start + (end - start) * p
 
 
 def smoothstep(edge0, edge1, x):
@@ -484,7 +502,7 @@ def build_background(settings: dict) -> tuple[np.ndarray, bool]:
 # -----------------------------------------------------------------------------
 
 def render_dot_layer(frame_index: int, fps: int, rings, density_data, dot_rgb, opaque: bool = False,
-                     alpha_gain: float = 1.0, size_gain: float = 1.0):
+                     alpha_gain: float = 1.0, size_gain: float = 1.0, scatter_gain: float = 1.0):
     if cairo is None:
         raise RuntimeError("pycairo가 설치되어 있지 않습니다. pip install pycairo")
 
@@ -612,6 +630,7 @@ def render_dot_layer(frame_index: int, fps: int, rings, density_data, dot_rgb, o
             * np.clip(0.24 + 0.52*cyc1 + 0.28*cyc2, 0.0, 1.0)
             * (0.70 + 0.60*gloss_frag)
         )
+        q = q * scatter_gain
 
         ang_lag = q * (0.055 + 0.18*frag + 0.06*gloss_frag) * tamp
 
@@ -772,6 +791,10 @@ def resolve_inputs(args):
     dot = normalize_hex_color(dot)
     if args.dot_alpha_gain <= 0 or args.dot_size_gain <= 0:
         raise ValueError("dot_alpha_gain / dot_size_gain은 0보다 커야 합니다.")
+    if args.scatter_start < 0 or args.scatter_end < 0:
+        raise ValueError("scatter_start / scatter_end는 0 이상이어야 합니다.")
+    if args.scatter_curve not in SCATTER_CURVES:
+        raise ValueError("--scatter-curve는 " + " / ".join(SCATTER_CURVES) + " 중 하나여야 합니다.")
     bg_mode = bg_mode.strip().lower()
     if args.alpha_codec not in ALPHA_CODECS:
         raise ValueError("--alpha-codec는 prores / vp9 중 하나여야 합니다.")
@@ -792,6 +815,9 @@ def resolve_inputs(args):
         "dot_opaque": bool(args.dot_opaque),
         "dot_alpha_gain": float(args.dot_alpha_gain),
         "dot_size_gain": float(args.dot_size_gain),
+        "scatter_start": float(args.scatter_start),
+        "scatter_end": float(args.scatter_end),
+        "scatter_curve": args.scatter_curve,
         "dark_alpha": bool(args.dark_alpha),
         "alpha_codec": args.alpha_codec,
         "bg_mode": bg_mode,
@@ -895,6 +921,9 @@ def save_settings(settings, output_path: Path, used_fallback: bool):
         "dot_opaque": settings["dot_opaque"],
         "dot_alpha_gain": settings["dot_alpha_gain"],
         "dot_size_gain": settings["dot_size_gain"],
+        "scatter_start": settings["scatter_start"],
+        "scatter_end": settings["scatter_end"],
+        "scatter_curve": settings["scatter_curve"],
         "dark_alpha": settings["dark_alpha"],
         "background_mode": settings["bg_mode"],
         "output_resolution": settings["resolution"],
@@ -1013,6 +1042,8 @@ def print_settings(settings, total_frames, used_fallback):
     print(f"시간       : {settings['duration']}")
     print(f"점 색      : {settings['dot']}" + (" (불투명)" if settings["dot_opaque"] else ""))
     print(f"점 배율    : alpha x{settings['dot_alpha_gain']} / size x{settings['dot_size_gain']}")
+    if settings["scatter_start"] != 1.0 or settings["scatter_end"] != 1.0:
+        print(f"흩어짐     : x{settings['scatter_start']} -> x{settings['scatter_end']} ({settings['scatter_curve']})")
     if settings["dark_alpha"]:
         print("dark alpha : 선형광 합성용 어두운 점 보정")
     print(f"배경 모드  : {settings['bg_mode']}")
@@ -1049,6 +1080,10 @@ def main():
     parser.add_argument("--dot", help="#RRGGBB")
     parser.add_argument("--dot-alpha-gain", type=float, default=1.0, help="점 alpha 배율 (1 초과면 상한 0.92 -> 1.0)")
     parser.add_argument("--dot-size-gain", type=float, default=1.0, help="점 반지름 배율")
+    parser.add_argument("--scatter-start", type=float, default=1.0, help="첫 프레임의 흩어짐 배율 (1 = 승인된 V37)")
+    parser.add_argument("--scatter-end", type=float, default=1.0, help="마지막 프레임의 흩어짐 배율")
+    parser.add_argument("--scatter-curve", default="linear",
+                        help="시작→끝 배율이 바뀌는 모양: linear(일정) / ease-in(처음 느리고 끝에서 빠름) / smooth(양끝 느림)")
     parser.add_argument("--alpha-codec", default="prores", help="transparent 출력 코덱: prores(.mov, 큼) / vp9(.webm, 약 1/4.5)")
     parser.add_argument("--dark-alpha", action="store_true",
                         help="transparent 전용. 어두운 점이 선형광 편집기에서 흰 점 렌더의 정확한 반전으로 보이게 alpha 를 보정")
@@ -1119,7 +1154,8 @@ def main():
     try:
         for i in range(total_frames):
             dots_bgra = render_dot_layer(i, settings["fps"], rings, density_data, dot_rgb, settings["dot_opaque"],
-                                         settings["dot_alpha_gain"], settings["dot_size_gain"])
+                                         settings["dot_alpha_gain"], settings["dot_size_gain"],
+                                         scatter_gain_at(settings, i, total_frames))
             if transparent:
                 frame = unpremultiply_bgra(dots_bgra)
                 if settings["dark_alpha"]:
