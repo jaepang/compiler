@@ -234,6 +234,28 @@ def spin_seconds_at(settings, frame_index: int, total_frames: int, fps: int) -> 
     return span * (start * p + (end - start) * ramp)
 
 
+_GL_X, _GL_W = np.polynomial.legendre.leggauss(12)
+
+
+def far_history(settings, frame_index: int, total_frames: int, fps: int):
+    """Quadrature of the scatter ramp up to this frame, as (spin-weighted seconds, scatter - 1) pairs.
+
+    The angular lag of drifted fragments is an integral over time, so a ramped scatter needs the
+    whole history; each frame is still computed on its own (parallel rendering stays exact)."""
+    if settings["scatter_start"] == settings["scatter_end"]:
+        return ((spin_seconds_at(settings, frame_index, total_frames, fps),
+                 max(settings["scatter_end"] - 1.0, 0.0)),)
+    half = frame_index / 2.0
+    out = []
+    for x, w in zip(_GL_X, _GL_W):
+        tau = half * (x + 1.0)
+        spin = ramp_at(settings["spin_start"], settings["spin_end"], settings["spin_curve"], tau, total_frames)
+        far = ramp_at(settings["scatter_start"], settings["scatter_end"], settings["scatter_curve"],
+                      tau, total_frames) - 1.0
+        out.append((spin * w * half / fps, max(far, 0.0)))
+    return tuple(out)
+
+
 def dust_at(settings, frame_index: int, total_frames: int) -> float:
     return ramp_at(settings["dust_start"], settings["dust_end"], settings["dust_curve"],
                    frame_index, total_frames)
@@ -252,11 +274,29 @@ FILL_FADE = 0.08
 LOBE_PEAK = 0.58
 # Alpha a fully spread shedding dot gets at least.
 ESCAPE_ALPHA_FLOOR = 0.45
+# Shedding-ring progress t over which the escape brightening reaches full strength. Starting right
+# at the rim (instead of following frag) keeps the rim from going dark between the LP and its cloud.
+ESCAPE_T_RAMP = 0.3
+
+# Scatter > 1: fragments drift outward by up to far * FAR_PUSH px (far = scatter - 1); each dot's
+# reach is u ** FAR_REACH_POW, so the cloud thins out from the rim instead of moving out as a shell.
+FAR_PUSH = 120.0 * DESIGN_SCALE
+FAR_REACH_POW = 1.4
+FAR_FULL = 3.0   # far at which drifted fragments move at the LP rim's linear speed
+FAR_RING_START = 345.0 * DESIGN_SCALE   # rings inside stay LP body
+FAR_RING_END = 470.0 * DESIGN_SCALE
+
+
+def far_ring_weight(rr: float) -> float:
+    """0 for rings that stay LP body, rising to 1 across the shedding rings (by radius only)."""
+    return float(smoothstep01((rr - FAR_RING_START) / (FAR_RING_END - FAR_RING_START)))
 
 # Dust: detached dots drifting around the whole area outside the LP (--dust-start/--dust-end).
 DUST_MAX = 8000
-DUST_INNER_R = 580.0 * RENDER_W / 1920.0   # just outside the LP rim, never over the record
+DUST_INNER_R = OUTER_R + 6.0   # from the LP rim outward, never over the record
 DUST_OUTER_R = math.hypot(RENDER_W, RENDER_H) / 2.0 + 40.0
+DUST_R_POW = 2.2
+DUST_SPEED_MEDIAN = 0.85   # median of the per-dot speed jitter below
 
 
 def smoothstep(edge0, edge1, x):
@@ -364,6 +404,10 @@ def build_rings(seed: int):
         if ring.get("dust"):
             continue
         ring["fill_seed"] = fill_rng.random(len(ring["base_angles"])).astype(np.float32)
+    far_rng = np.random.default_rng([seed, 3])
+    for ring in rings:
+        # How far past the V37 spot each fragment drifts when scatter > 1 (0 = stays, 1 = farthest).
+        ring["far_reach"] = (far_rng.random(len(ring["base_angles"])) ** FAR_REACH_POW).astype(np.float32)
 
     rings.append(rings_dust)  # kept last; render_dot_layer draws it only when dust is on
     return rings
@@ -374,7 +418,7 @@ def build_dust(seed: int):
     n = DUST_MAX
     # Radii biased toward the rim so the dust thins out toward the screen corners.
     u = rng.random(n)
-    r0 = DUST_INNER_R + (DUST_OUTER_R - DUST_INNER_R) * u ** 1.6
+    r0 = DUST_INNER_R + (DUST_OUTER_R - DUST_INNER_R) * u ** DUST_R_POW
     return {
         "dust": True,
         "order": rng.permutation(n).astype(np.float32) / n,  # reveal order
@@ -394,7 +438,8 @@ def build_dust(seed: int):
     }
 
 
-def draw_dust(ctx, dust, count: float, t_sec: float, spin_sec: float, dot_rgb, opaque: bool):
+def draw_dust(ctx, dust, count: float, t_sec: float, spin_sec: float, dot_rgb, opaque: bool,
+              speed_gain: float = 1.0):
     share = count / DUST_MAX
     reveal = smoothstep01((share * (1.0 + FILL_FADE) - dust["order"]) / FILL_FADE)
     on = reveal > 0.0
@@ -404,8 +449,10 @@ def draw_dust(ctx, dust, count: float, t_sec: float, spin_sec: float, dot_rgb, o
     r0 = dust["r0"][on]
     r = r0 + dust["r_amp"][on] * np.sin(2 * np.pi * t_sec / dust["r_period"][on] + dust["r_phase"][on])
     r = np.maximum(r, DUST_INNER_R)
-    # Same clockwise direction as the LP, slower farther out, sped up with the spin ramp.
-    omega = np.deg2rad(MAIN_SPEED_BASE) * dust["speed"][on] * (DUST_INNER_R / r0) ** 0.7
+    # Same clockwise direction as the LP, at about the LP rim's linear speed (px/s) at every radius
+    # times speed_gain, so the dust does not look faster than the record; follows the spin ramp.
+    omega = (np.deg2rad(MAIN_SPEED_BASE) * speed_gain * dust["speed"][on] / DUST_SPEED_MEDIAN
+             * (OUTER_R / r0))
     a = (dust["theta0"][on] + omega * spin_sec
          + dust["w_amp"][on] * np.sin(2 * np.pi * t_sec / dust["w_period"][on] + dust["w_phase"][on]))
     x = cx + r * np.cos(a)
@@ -616,7 +663,7 @@ def build_background(settings: dict) -> tuple[np.ndarray, bool]:
 def render_dot_layer(frame_index: int, fps: int, rings, density_data, dot_rgb, opaque: bool = False,
                      alpha_gain: float = 1.0, size_gain: float = 1.0, scatter_gain: float = 1.0,
                      fill: float = 1.0, escape_gain: float = 1.0, spin_sec: float | None = None,
-                     dust_count: float = 0.0):
+                     dust_count: float = 0.0, far_hist=None, dust_speed: float = 1.0):
     if cairo is None:
         raise RuntimeError("pycairo가 설치되어 있지 않습니다. pip install pycairo")
 
@@ -642,7 +689,8 @@ def render_dot_layer(frame_index: int, fps: int, rings, density_data, dot_rgb, o
     for ring in rings:
         if ring.get("dust"):
             if dust_count > 0.0:
-                draw_dust(ctx, ring, dust_count, t_sec, t_sec if spin_sec is None else spin_sec, dot_rgb, opaque)
+                draw_dust(ctx, ring, dust_count, t_sec, t_sec if spin_sec is None else spin_sec, dot_rgb, opaque,
+                          dust_speed)
             continue
         rr = ring["rr"]
         base_angles = ring["base_angles"]
@@ -770,7 +818,9 @@ def render_dot_layer(frame_index: int, fps: int, rings, density_data, dot_rgb, o
             * np.clip(0.24 + 0.52*cyc1 + 0.28*cyc2, 0.0, 1.0)
             * (0.70 + 0.60*gloss_frag)
         )
-        q = q * scatter_gain
+        far = scatter_gain - 1.0
+        if far <= 0.0:
+            q = q * scatter_gain
 
         ang_lag = q * (0.055 + 0.18*frag + 0.06*gloss_frag) * tamp
 
@@ -800,6 +850,25 @@ def render_dot_layer(frame_index: int, fps: int, rings, density_data, dot_rgb, o
 
         a_draw = a_m - ang_lag + curl + ang_scatter
         rr_draw = rr + radial_push + radial_scatter
+        if far > 0.0:
+            # scatter > 1: instead of multiplying the V37 churn (which grows the motion with the square
+            # of the gain), each fragment keeps its V37 wobble and drifts steadily outward by its own
+            # reach, so the cloud thins out smoothly from the rim instead of leaving an empty band.
+            # Per-dot constant (ring radius + seeds only): the angular lag below integrates it over
+            # time, so it must not change as the dot turns, or the dot would jump.
+            reach = ring["far_reach"][mask] * eamp * far_ring_weight(rr)
+            rr_draw = rr_draw + far * FAR_PUSH * reach
+            # Drifted fragments lose angular speed as they move out, so they travel at about the
+            # LP rim's linear speed instead of rr / OUTER_R times it (history from far_history).
+            omega = 2 * np.pi * ring["steps"] / (N * MOTION_PERIOD_SEC)
+            over_rim = max(rr - OUTER_R, 0.0)
+            lag = np.zeros_like(reach)
+            hist = far_hist if far_hist is not None else ((t_sec if spin_sec is None else spin_sec, far),)
+            for w_sec, far_j in hist:
+                # Speed ratio to the rigid ring: rim radius over drawn radius once far reaches FAR_FULL.
+                r_ref = rr - over_rim * min(far_j / FAR_FULL, 1.0)
+                lag += w_sec * (1.0 - r_ref / (rr + far_j * FAR_PUSH * reach))
+            a_draw = a_draw - omega * lag
 
         x = cx + rr_draw * np.cos(a_draw)
         y = cy + rr_draw * np.sin(a_draw)
@@ -851,10 +920,11 @@ def render_dot_layer(frame_index: int, fps: int, rings, density_data, dot_rgb, o
         if alpha_gain != 1.0:
             alpha_values = np.clip(alpha_values * alpha_gain, 0.010, 1.0)
         if escape_gain > 1.0:
-            # Brighten only the shedding dots (frag 0 in the body), up to the usual 0.92 cap. Dots
+            # Brighten only the shedding dots (t 0 in the body), up to the usual 0.92 cap. Dots
             # shed from pale areas also get a floor so the spread-out rim is visible, not only the lobes.
-            alpha_values = alpha_values * (1.0 + (escape_gain - 1.0) * frag)
-            alpha_values = np.maximum(alpha_values, spread * frag * ESCAPE_ALPHA_FLOOR)
+            ew = smoothstep01(t_m / ESCAPE_T_RAMP)
+            alpha_values = alpha_values * (1.0 + (escape_gain - 1.0) * ew)
+            alpha_values = np.maximum(alpha_values, spread * ew * ESCAPE_ALPHA_FLOOR)
             alpha_values = np.minimum(alpha_values, 0.92)
         if reveal is not None:
             alpha_values = alpha_values * reveal[mask]
@@ -953,6 +1023,8 @@ def resolve_inputs(args):
         raise ValueError("--spin-curve는 " + " / ".join(SCATTER_CURVES) + " 중 하나여야 합니다.")
     if not (0 <= args.dust_start <= DUST_MAX and 0 <= args.dust_end <= DUST_MAX):
         raise ValueError(f"dust_start / dust_end는 0~{DUST_MAX} 범위여야 합니다.")
+    if args.dust_speed < 0:
+        raise ValueError("dust_speed는 0 이상이어야 합니다.")
     if args.dust_curve not in SCATTER_CURVES:
         raise ValueError("--dust-curve는 " + " / ".join(SCATTER_CURVES) + " 중 하나여야 합니다.")
     if not (0 <= args.fill_start <= 1 and 0 <= args.fill_end <= 1):
@@ -991,6 +1063,7 @@ def resolve_inputs(args):
         "dust_start": float(args.dust_start),
         "dust_end": float(args.dust_end),
         "dust_curve": args.dust_curve,
+        "dust_speed": float(args.dust_speed),
         "fill_start": float(args.fill_start),
         "fill_end": float(args.fill_end),
         "fill_curve": args.fill_curve,
@@ -1109,6 +1182,7 @@ def save_settings(settings, output_path: Path, used_fallback: bool):
         "dust_start": settings["dust_start"],
         "dust_end": settings["dust_end"],
         "dust_curve": settings["dust_curve"],
+        "dust_speed": settings["dust_speed"],
         "fill_start": settings["fill_start"],
         "fill_end": settings["fill_end"],
         "fill_curve": settings["fill_curve"],
@@ -1237,7 +1311,8 @@ def print_settings(settings, total_frames, used_fallback):
     if settings["spin_start"] != 1.0 or settings["spin_end"] != 1.0:
         print(f"회전 속도  : x{settings['spin_start']} -> x{settings['spin_end']} ({settings['spin_curve']})")
     if settings["dust_start"] or settings["dust_end"]:
-        print(f"먼지 점    : {settings['dust_start']:.0f} -> {settings['dust_end']:.0f}개 ({settings['dust_curve']})")
+        print(f"먼지 점    : {settings['dust_start']:.0f} -> {settings['dust_end']:.0f}개 ({settings['dust_curve']})"
+              + (f", 속도 x{settings['dust_speed']}" if settings["dust_speed"] != 1.0 else ""))
     if settings["fill_start"] != 1.0 or settings["fill_end"] != 1.0:
         print(f"점 비율    : {settings['fill_start']} -> {settings['fill_end']} ({settings['fill_curve']})")
     if settings["dark_alpha"]:
@@ -1291,6 +1366,8 @@ def main():
                         help=f"첫 프레임의 먼지 점 개수 (LP 밖을 떠도는 탈락 점, 0~{DUST_MAX}, 기본 0 = 없음)")
     parser.add_argument("--dust-end", type=float, default=0.0, help="마지막 프레임의 먼지 점 개수")
     parser.add_argument("--dust-curve", default="linear", help="개수가 바뀌는 모양: linear / ease-in / smooth")
+    parser.add_argument("--dust-speed", type=float, default=1.0,
+                        help="먼지 점의 선속도(px/s)를 LP 바깥 테두리 선속도의 몇 배로 할지 (기본 1 = 같게)")
     parser.add_argument("--fill-start", type=float, default=1.0,
                         help="첫 프레임에 보이는 점 비율 0~1 (1 = 승인된 V37, 전부)")
     parser.add_argument("--fill-end", type=float, default=1.0, help="마지막 프레임에 보이는 점 비율 0~1")
@@ -1381,7 +1458,9 @@ def main():
                                          fill_at(settings, i, total_frames),
                                          escape_at(settings, i, total_frames),
                                          spin_seconds_at(settings, i, total_frames, settings["fps"]),
-                                         dust_at(settings, i, total_frames))
+                                         dust_at(settings, i, total_frames),
+                                         far_history(settings, i, total_frames, settings["fps"]),
+                                         settings["dust_speed"])
             if transparent:
                 frame = unpremultiply_bgra(dots_bgra)
                 if settings["dark_alpha"]:
