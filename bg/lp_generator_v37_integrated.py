@@ -216,6 +216,29 @@ def escape_at(settings, frame_index: int, total_frames: int) -> float:
                    frame_index, total_frames)
 
 
+def spin_seconds_at(settings, frame_index: int, total_frames: int, fps: int) -> float:
+    """Rotation time for this frame: the spin multiplier integrated from the first frame, so a
+    speed ramp turns the LP smoothly instead of jumping. Equals frame_index / fps at 1 -> 1."""
+    start, end = settings["spin_start"], settings["spin_end"]
+    if start == end:
+        return start * frame_index / fps
+    span = max(total_frames - 1, 1) / fps
+    p = frame_index / max(total_frames - 1, 1)
+    curve = settings["spin_curve"]
+    if curve == "ease-in":
+        ramp = p ** 3 / 3.0
+    elif curve == "smooth":
+        ramp = p ** 3 - p ** 4 / 2.0
+    else:
+        ramp = p * p / 2.0
+    return span * (start * p + (end - start) * ramp)
+
+
+def dust_at(settings, frame_index: int, total_frames: int) -> float:
+    return ramp_at(settings["dust_start"], settings["dust_end"], settings["dust_curve"],
+                   frame_index, total_frames)
+
+
 def fill_at(settings, frame_index: int, total_frames: int) -> float:
     return ramp_at(settings["fill_start"], settings["fill_end"], settings["fill_curve"],
                    frame_index, total_frames)
@@ -224,6 +247,16 @@ def fill_at(settings, frame_index: int, total_frames: int) -> float:
 # Width of the per-dot fade-in, in fill units: a dot appears over this much of the fill ramp
 # instead of popping in on one frame.
 FILL_FADE = 0.08
+
+# lobe_bias peak (0.58 at the upper-left lobe); spread pulls the whole rim toward it.
+LOBE_PEAK = 0.58
+# Alpha a fully spread shedding dot gets at least.
+ESCAPE_ALPHA_FLOOR = 0.45
+
+# Dust: detached dots drifting around the whole area outside the LP (--dust-start/--dust-end).
+DUST_MAX = 8000
+DUST_INNER_R = 580.0 * RENDER_W / 1920.0   # just outside the LP rim, never over the record
+DUST_OUTER_R = math.hypot(RENDER_W, RENDER_H) / 2.0 + 40.0
 
 
 def smoothstep(edge0, edge1, x):
@@ -324,12 +357,67 @@ def build_rings(seed: int):
             "frag_size_jitter": rng.uniform(0.95, 1.18, N).astype(np.float32),
         })
 
+    rings_dust = build_dust(seed)
     # Separate stream so the approved rings above draw exactly the same numbers as before.
     fill_rng = np.random.default_rng([seed, 1])
     for ring in rings:
+        if ring.get("dust"):
+            continue
         ring["fill_seed"] = fill_rng.random(len(ring["base_angles"])).astype(np.float32)
 
+    rings.append(rings_dust)  # kept last; render_dot_layer draws it only when dust is on
     return rings
+
+
+def build_dust(seed: int):
+    rng = np.random.default_rng([seed, 2])
+    n = DUST_MAX
+    # Radii biased toward the rim so the dust thins out toward the screen corners.
+    u = rng.random(n)
+    r0 = DUST_INNER_R + (DUST_OUTER_R - DUST_INNER_R) * u ** 1.6
+    return {
+        "dust": True,
+        "order": rng.permutation(n).astype(np.float32) / n,  # reveal order
+        "theta0": rng.uniform(0, 2 * np.pi, n),
+        "r0": r0,
+        "r_amp": rng.uniform(0.04, 0.14, n) * r0,
+        "r_period": rng.uniform(18.0, 55.0, n),
+        "r_phase": rng.uniform(0, 2 * np.pi, n),
+        "w_amp": rng.uniform(0.02, 0.09, n),
+        "w_period": rng.uniform(9.0, 30.0, n),
+        "w_phase": rng.uniform(0, 2 * np.pi, n),
+        "speed": rng.uniform(0.55, 1.15, n),
+        "radius": (0.40 + 0.55 * rng.random(n) ** 1.8) * DESIGN_SCALE,
+        "alpha": rng.uniform(0.18, 0.62, n),
+        "tw_period": rng.uniform(2.5, 7.0, n),
+        "tw_phase": rng.uniform(0, 2 * np.pi, n),
+    }
+
+
+def draw_dust(ctx, dust, count: float, t_sec: float, spin_sec: float, dot_rgb, opaque: bool):
+    share = count / DUST_MAX
+    reveal = smoothstep01((share * (1.0 + FILL_FADE) - dust["order"]) / FILL_FADE)
+    on = reveal > 0.0
+    if not np.any(on):
+        return
+    cx, cy = RENDER_W / 2.0, RENDER_H / 2.0
+    r0 = dust["r0"][on]
+    r = r0 + dust["r_amp"][on] * np.sin(2 * np.pi * t_sec / dust["r_period"][on] + dust["r_phase"][on])
+    r = np.maximum(r, DUST_INNER_R)
+    # Same clockwise direction as the LP, slower farther out, sped up with the spin ramp.
+    omega = np.deg2rad(MAIN_SPEED_BASE) * dust["speed"][on] * (DUST_INNER_R / r0) ** 0.7
+    a = (dust["theta0"][on] + omega * spin_sec
+         + dust["w_amp"][on] * np.sin(2 * np.pi * t_sec / dust["w_period"][on] + dust["w_phase"][on]))
+    x = cx + r * np.cos(a)
+    y = cy + r * np.sin(a)
+    twinkle = 0.75 + 0.25 * np.sin(2 * np.pi * t_sec / dust["tw_period"][on] + dust["tw_phase"][on])
+    alpha = dust["alpha"][on] * twinkle * reveal[on]
+    for px, py, radius, al in zip(x, y, dust["radius"][on], alpha):
+        if px < -10 or px > RENDER_W + 10 or py < -10 or py > RENDER_H + 10 or al < 0.010:
+            continue
+        ctx.set_source_rgba(dot_rgb[0], dot_rgb[1], dot_rgb[2], 1.0 if opaque else float(al))
+        ctx.arc(float(px), float(py), float(radius), 0.0, 2.0 * math.pi)
+        ctx.fill()
 
 
 def limit_fragment_overlap(x, y, radii, frag, q):
@@ -527,7 +615,8 @@ def build_background(settings: dict) -> tuple[np.ndarray, bool]:
 
 def render_dot_layer(frame_index: int, fps: int, rings, density_data, dot_rgb, opaque: bool = False,
                      alpha_gain: float = 1.0, size_gain: float = 1.0, scatter_gain: float = 1.0,
-                     fill: float = 1.0, escape_gain: float = 1.0):
+                     fill: float = 1.0, escape_gain: float = 1.0, spin_sec: float | None = None,
+                     dust_count: float = 0.0):
     if cairo is None:
         raise RuntimeError("pycairo가 설치되어 있지 않습니다. pip install pycairo")
 
@@ -545,13 +634,20 @@ def render_dot_layer(frame_index: int, fps: int, rings, density_data, dot_rgb, o
 
     t_sec = frame_index / fps
     u = t_sec / MOTION_PERIOD_SEC
+    spin_u = u if spin_sec is None else spin_sec / MOTION_PERIOD_SEC
+    # As escape_gain grows, shedding spreads from the two glossy lobes to the whole rim.
+    spread = 1.0 - 1.0 / escape_gain
     cx, cy = RENDER_W / 2.0, RENDER_H / 2.0
 
     for ring in rings:
+        if ring.get("dust"):
+            if dust_count > 0.0:
+                draw_dust(ctx, ring, dust_count, t_sec, t_sec if spin_sec is None else spin_sec, dot_rgb, opaque)
+            continue
         rr = ring["rr"]
         base_angles = ring["base_angles"]
         N = len(base_angles)
-        a_base = base_angles + 2 * np.pi * ring["steps"] * u / N
+        a_base = base_angles + 2 * np.pi * ring["steps"] * spin_u / N
 
         src_r = min(rr, OUTER_R)
         sx = cx + src_r * np.cos(a_base)
@@ -571,6 +667,8 @@ def render_dot_layer(frame_index: int, fps: int, rings, density_data, dot_rgb, o
             t = np.zeros(N, dtype=np.float32)
         else:
             lb = lobe_bias(a_base)
+            if spread > 0.0:
+                lb = lb + spread * (LOBE_PEAK - lb)
             wav = (
                 8.0 * DESIGN_SCALE * np.sin(3.0*a_base + 0.028*rr)
                 + 5.0 * DESIGN_SCALE * np.sin(7.0*a_base - 0.016*rr)
@@ -588,6 +686,8 @@ def render_dot_layer(frame_index: int, fps: int, rings, density_data, dot_rgb, o
             t = np.clip((rr - start_r) / np.maximum(end_r - start_r, 1e-3), 0.0, 1.0)
 
             gloss_anchor = smoothstep01((density - 0.44) / 0.30)
+            if spread > 0.0:
+                gloss_anchor = gloss_anchor + spread * (1.0 - gloss_anchor)
             lower = bottom_bias(a_base)
 
             base_keep = np.clip(
@@ -657,6 +757,9 @@ def render_dot_layer(frame_index: int, fps: int, rings, density_data, dot_rgb, o
 
         frag = smoothstep01((t_m - 0.08) / 0.92)
         gloss_frag = smoothstep01((den_m - 0.42) / 0.32)
+        if spread > 0.0:
+            # Every use of gloss_frag is weighted by frag, so the LP body is unaffected.
+            gloss_frag = gloss_frag + spread * (1.0 - gloss_frag)
         peel_bias = 0.55 + 0.45 * gloss_frag
 
         cyc1 = 0.5 + 0.5 * np.sin(2*np.pi*u + eph)
@@ -748,8 +851,11 @@ def render_dot_layer(frame_index: int, fps: int, rings, density_data, dot_rgb, o
         if alpha_gain != 1.0:
             alpha_values = np.clip(alpha_values * alpha_gain, 0.010, 1.0)
         if escape_gain > 1.0:
-            # Brighten only the shedding dots (frag 0 in the body), up to the usual 0.92 cap.
-            alpha_values = np.minimum(alpha_values * (1.0 + (escape_gain - 1.0) * frag), 0.92)
+            # Brighten only the shedding dots (frag 0 in the body), up to the usual 0.92 cap. Dots
+            # shed from pale areas also get a floor so the spread-out rim is visible, not only the lobes.
+            alpha_values = alpha_values * (1.0 + (escape_gain - 1.0) * frag)
+            alpha_values = np.maximum(alpha_values, spread * frag * ESCAPE_ALPHA_FLOOR)
+            alpha_values = np.minimum(alpha_values, 0.92)
         if reveal is not None:
             alpha_values = alpha_values * reveal[mask]
 
@@ -841,6 +947,14 @@ def resolve_inputs(args):
         raise ValueError("escape_start / escape_end는 1 이상이어야 합니다.")
     if args.escape_curve not in SCATTER_CURVES:
         raise ValueError("--escape-curve는 " + " / ".join(SCATTER_CURVES) + " 중 하나여야 합니다.")
+    if args.spin_start <= 0 or args.spin_end <= 0:
+        raise ValueError("spin_start / spin_end는 0보다 커야 합니다.")
+    if args.spin_curve not in SCATTER_CURVES:
+        raise ValueError("--spin-curve는 " + " / ".join(SCATTER_CURVES) + " 중 하나여야 합니다.")
+    if not (0 <= args.dust_start <= DUST_MAX and 0 <= args.dust_end <= DUST_MAX):
+        raise ValueError(f"dust_start / dust_end는 0~{DUST_MAX} 범위여야 합니다.")
+    if args.dust_curve not in SCATTER_CURVES:
+        raise ValueError("--dust-curve는 " + " / ".join(SCATTER_CURVES) + " 중 하나여야 합니다.")
     if not (0 <= args.fill_start <= 1 and 0 <= args.fill_end <= 1):
         raise ValueError("fill_start / fill_end는 0~1 범위여야 합니다.")
     if args.fill_curve not in SCATTER_CURVES:
@@ -871,6 +985,12 @@ def resolve_inputs(args):
         "escape_start": float(args.escape_start),
         "escape_end": float(args.escape_end),
         "escape_curve": args.escape_curve,
+        "spin_start": float(args.spin_start),
+        "spin_end": float(args.spin_end),
+        "spin_curve": args.spin_curve,
+        "dust_start": float(args.dust_start),
+        "dust_end": float(args.dust_end),
+        "dust_curve": args.dust_curve,
         "fill_start": float(args.fill_start),
         "fill_end": float(args.fill_end),
         "fill_curve": args.fill_curve,
@@ -983,6 +1103,12 @@ def save_settings(settings, output_path: Path, used_fallback: bool):
         "escape_start": settings["escape_start"],
         "escape_end": settings["escape_end"],
         "escape_curve": settings["escape_curve"],
+        "spin_start": settings["spin_start"],
+        "spin_end": settings["spin_end"],
+        "spin_curve": settings["spin_curve"],
+        "dust_start": settings["dust_start"],
+        "dust_end": settings["dust_end"],
+        "dust_curve": settings["dust_curve"],
         "fill_start": settings["fill_start"],
         "fill_end": settings["fill_end"],
         "fill_curve": settings["fill_curve"],
@@ -1108,6 +1234,10 @@ def print_settings(settings, total_frames, used_fallback):
         print(f"흩어짐     : x{settings['scatter_start']} -> x{settings['scatter_end']} ({settings['scatter_curve']})")
     if settings["escape_start"] != 1.0 or settings["escape_end"] != 1.0:
         print(f"빠져나가는 점: x{settings['escape_start']} -> x{settings['escape_end']} ({settings['escape_curve']})")
+    if settings["spin_start"] != 1.0 or settings["spin_end"] != 1.0:
+        print(f"회전 속도  : x{settings['spin_start']} -> x{settings['spin_end']} ({settings['spin_curve']})")
+    if settings["dust_start"] or settings["dust_end"]:
+        print(f"먼지 점    : {settings['dust_start']:.0f} -> {settings['dust_end']:.0f}개 ({settings['dust_curve']})")
     if settings["fill_start"] != 1.0 or settings["fill_end"] != 1.0:
         print(f"점 비율    : {settings['fill_start']} -> {settings['fill_end']} ({settings['fill_curve']})")
     if settings["dark_alpha"]:
@@ -1154,6 +1284,13 @@ def main():
                         help="첫 프레임의 빠져나가는 점 배율 (1 = 승인된 V37). 외곽 파편의 개수와 밝기만 늘리고 LP 본체는 그대로")
     parser.add_argument("--escape-end", type=float, default=1.0, help="마지막 프레임의 빠져나가는 점 배율")
     parser.add_argument("--escape-curve", default="linear", help="배율이 바뀌는 모양: linear / ease-in / smooth")
+    parser.add_argument("--spin-start", type=float, default=1.0, help="첫 프레임의 회전 속도 배율 (1 = 승인된 V37)")
+    parser.add_argument("--spin-end", type=float, default=1.0, help="마지막 프레임의 회전 속도 배율")
+    parser.add_argument("--spin-curve", default="linear", help="속도가 바뀌는 모양: linear / ease-in / smooth")
+    parser.add_argument("--dust-start", type=float, default=0.0,
+                        help=f"첫 프레임의 먼지 점 개수 (LP 밖을 떠도는 탈락 점, 0~{DUST_MAX}, 기본 0 = 없음)")
+    parser.add_argument("--dust-end", type=float, default=0.0, help="마지막 프레임의 먼지 점 개수")
+    parser.add_argument("--dust-curve", default="linear", help="개수가 바뀌는 모양: linear / ease-in / smooth")
     parser.add_argument("--fill-start", type=float, default=1.0,
                         help="첫 프레임에 보이는 점 비율 0~1 (1 = 승인된 V37, 전부)")
     parser.add_argument("--fill-end", type=float, default=1.0, help="마지막 프레임에 보이는 점 비율 0~1")
@@ -1242,7 +1379,9 @@ def main():
                                          settings["dot_alpha_gain"], settings["dot_size_gain"],
                                          scatter_gain_at(settings, i, total_frames),
                                          fill_at(settings, i, total_frames),
-                                         escape_at(settings, i, total_frames))
+                                         escape_at(settings, i, total_frames),
+                                         spin_seconds_at(settings, i, total_frames, settings["fps"]),
+                                         dust_at(settings, i, total_frames))
             if transparent:
                 frame = unpremultiply_bgra(dots_bgra)
                 if settings["dark_alpha"]:
