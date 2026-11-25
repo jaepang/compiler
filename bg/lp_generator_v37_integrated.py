@@ -66,7 +66,7 @@ except ImportError:
     cairo = None
 
 
-SCRIPT_VERSION = "V37-integrated-1.7"
+SCRIPT_VERSION = "V37-integrated-1.8"
 
 # Fixed design render size. Final output may be 4K or another 16:9 size.
 RENDER_W = 1920
@@ -194,17 +194,31 @@ def smoothstep01(x):
 SCATTER_CURVES = ("linear", "ease-in", "smooth")
 
 
-def scatter_gain_at(settings, frame_index: int, total_frames: int) -> float:
-    """Scatter multiplier for this frame, ramped from scatter_start to scatter_end over the video."""
-    start, end = settings["scatter_start"], settings["scatter_end"]
+def ramp_at(start: float, end: float, curve: str, frame_index: int, total_frames: int) -> float:
+    """Value for this frame, ramped from start (first frame) to end (last frame) over the video."""
     if start == end:
         return start
     p = frame_index / max(total_frames - 1, 1)
-    if settings["scatter_curve"] == "ease-in":
+    if curve == "ease-in":
         p = p * p
-    elif settings["scatter_curve"] == "smooth":
+    elif curve == "smooth":
         p = p * p * (3.0 - 2.0 * p)
     return start + (end - start) * p
+
+
+def scatter_gain_at(settings, frame_index: int, total_frames: int) -> float:
+    return ramp_at(settings["scatter_start"], settings["scatter_end"], settings["scatter_curve"],
+                   frame_index, total_frames)
+
+
+def fill_at(settings, frame_index: int, total_frames: int) -> float:
+    return ramp_at(settings["fill_start"], settings["fill_end"], settings["fill_curve"],
+                   frame_index, total_frames)
+
+
+# Width of the per-dot fade-in, in fill units: a dot appears over this much of the fill ramp
+# instead of popping in on one frame.
+FILL_FADE = 0.08
 
 
 def smoothstep(edge0, edge1, x):
@@ -304,6 +318,11 @@ def build_rings(seed: int):
             "tangential_amp": rng.uniform(0.75, 1.25, N).astype(np.float32),
             "frag_size_jitter": rng.uniform(0.95, 1.18, N).astype(np.float32),
         })
+
+    # Separate stream so the approved rings above draw exactly the same numbers as before.
+    fill_rng = np.random.default_rng([seed, 1])
+    for ring in rings:
+        ring["fill_seed"] = fill_rng.random(len(ring["base_angles"])).astype(np.float32)
 
     return rings
 
@@ -502,7 +521,8 @@ def build_background(settings: dict) -> tuple[np.ndarray, bool]:
 # -----------------------------------------------------------------------------
 
 def render_dot_layer(frame_index: int, fps: int, rings, density_data, dot_rgb, opaque: bool = False,
-                     alpha_gain: float = 1.0, size_gain: float = 1.0, scatter_gain: float = 1.0):
+                     alpha_gain: float = 1.0, size_gain: float = 1.0, scatter_gain: float = 1.0,
+                     fill: float = 1.0):
     if cairo is None:
         raise RuntimeError("pycairo가 설치되어 있지 않습니다. pip install pycairo")
 
@@ -590,6 +610,12 @@ def render_dot_layer(frame_index: int, fps: int, rings, density_data, dot_rgb, o
             )
             long_tail_mask = ring["tail_seed"] < long_tail_prob
             mask = primary_mask & (secondary_mask | long_tail_mask)
+
+        # fill < 1 shows only part of the dots; each dot fades in as fill passes its fill_seed.
+        reveal = None
+        if fill < 1.0:
+            reveal = smoothstep01((fill * (1.0 + FILL_FADE) - ring["fill_seed"]) / FILL_FADE)
+            mask = mask & (reveal > 0.0)
 
         if not np.any(mask):
             continue
@@ -710,6 +736,8 @@ def render_dot_layer(frame_index: int, fps: int, rings, density_data, dot_rgb, o
         alpha_values = np.clip(alpha_values, 0.010, 0.92)
         if alpha_gain != 1.0:
             alpha_values = np.clip(alpha_values * alpha_gain, 0.010, 1.0)
+        if reveal is not None:
+            alpha_values = alpha_values * reveal[mask]
 
         for px, py, radius, alpha in zip(x, y, radii, alpha_values):
             if (
@@ -795,6 +823,10 @@ def resolve_inputs(args):
         raise ValueError("scatter_start / scatter_end는 0 이상이어야 합니다.")
     if args.scatter_curve not in SCATTER_CURVES:
         raise ValueError("--scatter-curve는 " + " / ".join(SCATTER_CURVES) + " 중 하나여야 합니다.")
+    if not (0 <= args.fill_start <= 1 and 0 <= args.fill_end <= 1):
+        raise ValueError("fill_start / fill_end는 0~1 범위여야 합니다.")
+    if args.fill_curve not in SCATTER_CURVES:
+        raise ValueError("--fill-curve는 " + " / ".join(SCATTER_CURVES) + " 중 하나여야 합니다.")
     bg_mode = bg_mode.strip().lower()
     if args.alpha_codec not in ALPHA_CODECS:
         raise ValueError("--alpha-codec는 prores / vp9 중 하나여야 합니다.")
@@ -818,6 +850,9 @@ def resolve_inputs(args):
         "scatter_start": float(args.scatter_start),
         "scatter_end": float(args.scatter_end),
         "scatter_curve": args.scatter_curve,
+        "fill_start": float(args.fill_start),
+        "fill_end": float(args.fill_end),
+        "fill_curve": args.fill_curve,
         "dark_alpha": bool(args.dark_alpha),
         "alpha_codec": args.alpha_codec,
         "bg_mode": bg_mode,
@@ -924,6 +959,9 @@ def save_settings(settings, output_path: Path, used_fallback: bool):
         "scatter_start": settings["scatter_start"],
         "scatter_end": settings["scatter_end"],
         "scatter_curve": settings["scatter_curve"],
+        "fill_start": settings["fill_start"],
+        "fill_end": settings["fill_end"],
+        "fill_curve": settings["fill_curve"],
         "dark_alpha": settings["dark_alpha"],
         "background_mode": settings["bg_mode"],
         "output_resolution": settings["resolution"],
@@ -1044,6 +1082,8 @@ def print_settings(settings, total_frames, used_fallback):
     print(f"점 배율    : alpha x{settings['dot_alpha_gain']} / size x{settings['dot_size_gain']}")
     if settings["scatter_start"] != 1.0 or settings["scatter_end"] != 1.0:
         print(f"흩어짐     : x{settings['scatter_start']} -> x{settings['scatter_end']} ({settings['scatter_curve']})")
+    if settings["fill_start"] != 1.0 or settings["fill_end"] != 1.0:
+        print(f"점 비율    : {settings['fill_start']} -> {settings['fill_end']} ({settings['fill_curve']})")
     if settings["dark_alpha"]:
         print("dark alpha : 선형광 합성용 어두운 점 보정")
     print(f"배경 모드  : {settings['bg_mode']}")
@@ -1084,6 +1124,13 @@ def main():
     parser.add_argument("--scatter-end", type=float, default=1.0, help="마지막 프레임의 흩어짐 배율")
     parser.add_argument("--scatter-curve", default="linear",
                         help="시작→끝 배율이 바뀌는 모양: linear(일정) / ease-in(처음 느리고 끝에서 빠름) / smooth(양끝 느림)")
+    parser.add_argument("--fill-start", type=float, default=1.0,
+                        help="첫 프레임에 보이는 점 비율 0~1 (1 = 승인된 V37, 전부)")
+    parser.add_argument("--fill-end", type=float, default=1.0, help="마지막 프레임에 보이는 점 비율 0~1")
+    parser.add_argument("--fill-curve", default="linear", help="점 비율이 바뀌는 모양: linear / ease-in / smooth")
+    parser.add_argument("--frame-start", type=int, default=0,
+                        help="이 프레임부터만 렌더 (병렬 분할용. 흩어짐·점 비율은 전체 길이 기준)")
+    parser.add_argument("--frame-end", type=int, help="이 프레임 직전까지만 렌더 (기본: 끝까지)")
     parser.add_argument("--alpha-codec", default="prores", help="transparent 출력 코덱: prores(.mov, 큼) / vp9(.webm, 약 1/4.5)")
     parser.add_argument("--dark-alpha", action="store_true",
                         help="transparent 전용. 어두운 점이 선형광 편집기에서 흰 점 렌더의 정확한 반전으로 보이게 alpha 를 보정")
@@ -1137,9 +1184,16 @@ def main():
     bg_frame, used_fallback = build_background(settings)
 
     total_frames = int(round(settings["duration_sec"] * settings["fps"]))
+    frame_start = args.frame_start
+    frame_end = total_frames if args.frame_end is None else args.frame_end
+    if not 0 <= frame_start < frame_end <= total_frames:
+        print(f"입력 오류: 프레임 범위는 0 <= start < end <= {total_frames} 이어야 합니다.")
+        sys.exit(1)
     settings["output"].parent.mkdir(parents=True, exist_ok=True)
 
     print_settings(settings, total_frames, used_fallback)
+    if (frame_start, frame_end) != (0, total_frames):
+        print(f"프레임 구간: {frame_start:,} ~ {frame_end:,}\n")
     json_path, seed_path = save_settings(settings, settings["output"], used_fallback)
     transparent = settings["bg_mode"] == "transparent"
     proc = start_ffmpeg(settings["output"], settings["out_w"], settings["out_h"], settings["fps"], transparent,
@@ -1152,10 +1206,12 @@ def main():
     last_print = started
 
     try:
-        for i in range(total_frames):
+        span = frame_end - frame_start
+        for i in range(frame_start, frame_end):
             dots_bgra = render_dot_layer(i, settings["fps"], rings, density_data, dot_rgb, settings["dot_opaque"],
                                          settings["dot_alpha_gain"], settings["dot_size_gain"],
-                                         scatter_gain_at(settings, i, total_frames))
+                                         scatter_gain_at(settings, i, total_frames),
+                                         fill_at(settings, i, total_frames))
             if transparent:
                 frame = unpremultiply_bgra(dots_bgra)
                 if settings["dark_alpha"]:
@@ -1165,15 +1221,15 @@ def main():
             proc.stdin.write(frame.tobytes())
 
             now = time.time()
-            if now - last_print >= 2.0 or i == total_frames - 1:
-                done = i + 1
+            if now - last_print >= 2.0 or i == frame_end - 1:
+                done = i + 1 - frame_start
                 elapsed = now - started
                 rate = done / max(elapsed, 1e-6)
-                eta = (total_frames - done) / rate if rate > 0 else float("inf")
-                pct = done / total_frames * 100.0
+                eta = (span - done) / rate if rate > 0 else float("inf")
+                pct = done / span * 100.0
                 print(
                     f"\r{pct:6.2f}%  "
-                    f"{done:,}/{total_frames:,} frames  "
+                    f"{done:,}/{span:,} frames  "
                     f"{rate:5.2f} fps  "
                     f"ETA {format_eta(eta)}",
                     end="",
