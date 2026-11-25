@@ -19,6 +19,8 @@ User-controlled parameters:
   - dot alpha / size gain (--dot-alpha-gain, --dot-size-gain; e.g. a dark-dot pass that stays visible on light backgrounds)
   - scatter ramp (--scatter-start, --scatter-end, --scatter-curve): multiplies how far the fragments
     scatter, from the start value at the first frame to the end value at the last (default 1 -> 1 = approved V37)
+  - dot color ramp (--dot-end, --dot-change-start/-end in seconds, --dot-change-curve): the dot color moves
+    from --dot to --dot-end inside one render (mixed in sRGB; --dark-alpha fades out as the dots get lighter)
   - output resolution
   - FPS
   - seed (blank = random)
@@ -66,7 +68,7 @@ except ImportError:
     cairo = None
 
 
-SCRIPT_VERSION = "V37-integrated-1.8"
+SCRIPT_VERSION = "V37-integrated-1.9"
 
 # Fixed design render size. Final output may be 4K or another 16:9 size.
 RENDER_W = 1920
@@ -204,6 +206,69 @@ def ramp_at(start: float, end: float, curve: str, frame_index: int, total_frames
     elif curve == "smooth":
         p = p * p * (3.0 - 2.0 * p)
     return start + (end - start) * p
+
+
+def dot_mix_at(settings, frame_index: int, total_frames: int, fps: int) -> float:
+    """0 = --dot, 1 = --dot-end. Global video time, so --frame-start pieces stay exact."""
+    if settings["dot_end"] == settings["dot"]:
+        return 0.0
+    t = frame_index / fps
+    s0 = settings["dot_change_start"]
+    s1 = settings["dot_change_end"]
+    if s1 is None:
+        s1 = max(total_frames - 1, 1) / fps
+    if t <= s0:
+        return 0.0
+    if t >= s1:
+        return 1.0
+    p = (t - s0) / (s1 - s0)
+    curve = settings["dot_change_curve"]
+    if curve == "ease-in":
+        p = p * p
+    elif curve == "smooth":
+        p = p * p * (3.0 - 2.0 * p)
+    return p
+
+
+def dot_rgb_at(settings, mix: float):
+    """Dot color for this frame. Mixed in sRGB code values: equal steps there are roughly equal
+    lightness steps, and a black -> white ramp reaches the mid-grey of a mid-luminance background
+    near the middle of the ramp, where a smooth curve is steepest (shortest 'dots vanish' moment)."""
+    a = hex_to_rgb01(settings["dot"])
+    if mix <= 0.0:
+        return a
+    b = hex_to_rgb01(settings["dot_end"])
+    if mix >= 1.0:
+        return b
+    return tuple(x + (y - x) * mix for x, y in zip(a, b))
+
+
+def dark_alpha_lut_at(settings, dot_rgb) -> np.ndarray:
+    """--dark-alpha table for this frame's dot color.
+
+    In a linear-light compositor a dot of linear value L over background B gives
+    B + a' (L - B): its darkening reach scales with (1 - L), its brightening reach with L. The
+    LUT is the exact correction for the darkening (black) case and the light-dot render needs
+    none, so the table is blended by the dot's linear luminance: w = 1 - Y_lin
+    (w = 1 pure black = the full LUT, w = 0 white = alpha unchanged)."""
+    if settings["dot_end"] == settings["dot"]:
+        return _DARK_ALPHA_LUT
+    lin = _srgb_to_linear(np.asarray(dot_rgb, dtype=np.float64))
+    w = 1.0 - float(0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2])
+    if w >= 1.0:
+        return _DARK_ALPHA_LUT
+    base = np.arange(256, dtype=np.float64)
+    return np.round(base + (_DARK_ALPHA_LUT.astype(np.float64) - base) * max(w, 0.0)).astype(np.uint8)
+
+
+def finish_frame(settings, dots_bgra, bg_frame, dot_rgb):
+    """Premultiplied Cairo layer -> the bytes main() sends to FFmpeg."""
+    if settings["bg_mode"] == "transparent":
+        frame = unpremultiply_bgra(dots_bgra)
+        if settings["dark_alpha"]:
+            frame[:, :, 3] = dark_alpha_lut_at(settings, dot_rgb)[frame[:, :, 3]]
+        return frame
+    return composite_premult_bgra_over_bgr(dots_bgra, bg_frame)
 
 
 def scatter_gain_at(settings, frame_index: int, total_frames: int) -> float:
@@ -1014,6 +1079,13 @@ def resolve_inputs(args):
         raise ValueError("FPS는 1~120 범위로 입력하세요.")
 
     dot = normalize_hex_color(dot)
+    dot_end = normalize_hex_color(args.dot_end) if args.dot_end else dot
+    if args.dot_change_curve not in SCATTER_CURVES:
+        raise ValueError("--dot-change-curve는 " + " / ".join(SCATTER_CURVES) + " 중 하나여야 합니다.")
+    if args.dot_change_start < 0:
+        raise ValueError("dot_change_start는 0 이상이어야 합니다.")
+    if args.dot_change_end is not None and args.dot_change_end <= args.dot_change_start:
+        raise ValueError("dot_change_end는 dot_change_start보다 커야 합니다.")
     if args.dot_alpha_gain <= 0 or args.dot_size_gain <= 0:
         raise ValueError("dot_alpha_gain / dot_size_gain은 0보다 커야 합니다.")
     if args.scatter_start < 0 or args.scatter_end < 0:
@@ -1055,6 +1127,10 @@ def resolve_inputs(args):
         "fps": fps,
         "seed": seed,
         "dot": dot,
+        "dot_end": dot_end,
+        "dot_change_start": float(args.dot_change_start),
+        "dot_change_end": None if args.dot_change_end is None else float(args.dot_change_end),
+        "dot_change_curve": args.dot_change_curve,
         "dot_opaque": bool(args.dot_opaque),
         "dot_alpha_gain": float(args.dot_alpha_gain),
         "dot_size_gain": float(args.dot_size_gain),
@@ -1174,6 +1250,10 @@ def save_settings(settings, output_path: Path, used_fallback: bool):
         "duration": settings["duration"],
         "duration_seconds": settings["duration_sec"],
         "dot_color": settings["dot"],
+        "dot_end": settings["dot_end"],
+        "dot_change_start": settings["dot_change_start"],
+        "dot_change_end": settings["dot_change_end"],
+        "dot_change_curve": settings["dot_change_curve"],
         "dot_opaque": settings["dot_opaque"],
         "dot_alpha_gain": settings["dot_alpha_gain"],
         "dot_size_gain": settings["dot_size_gain"],
@@ -1310,6 +1390,10 @@ def print_settings(settings, total_frames, used_fallback):
     print("\n--- 렌더 설정 ---")
     print(f"시간       : {settings['duration']}")
     print(f"점 색      : {settings['dot']}" + (" (불투명)" if settings["dot_opaque"] else ""))
+    if settings["dot_end"] != settings["dot"]:
+        end = "끝" if settings["dot_change_end"] is None else f"{settings['dot_change_end']:.1f}s"
+        print(f"점 색 변화 : {settings['dot']} -> {settings['dot_end']} "
+              f"({settings['dot_change_start']:.1f}s ~ {end}, {settings['dot_change_curve']})")
     print(f"점 배율    : alpha x{settings['dot_alpha_gain']} / size x{settings['dot_size_gain']}")
     if settings["scatter_start"] != 1.0 or settings["scatter_end"] != 1.0:
         print(f"흩어짐     : x{settings['scatter_start']} -> x{settings['scatter_end']} ({settings['scatter_curve']})")
@@ -1356,6 +1440,10 @@ def main():
     parser = argparse.ArgumentParser(description="V37 LP 장시간 배경 영상 생성기 (통합 배경 모드)")
     parser.add_argument("--duration", help="HH:MM:SS")
     parser.add_argument("--dot", help="#RRGGBB")
+    parser.add_argument("--dot-end", help="점 색이 바뀌어 갈 끝 색 #RRGGBB (기본: --dot 과 같음 = 변화 없음)")
+    parser.add_argument("--dot-change-start", type=float, default=0.0, help="점 색 변화 시작 (영상 초, 기본 0)")
+    parser.add_argument("--dot-change-end", type=float, help="점 색 변화 끝 (영상 초, 기본 마지막 프레임)")
+    parser.add_argument("--dot-change-curve", default="linear", help="점 색이 바뀌는 모양: linear / ease-in / smooth")
     parser.add_argument("--dot-alpha-gain", type=float, default=1.0, help="점 alpha 배율 (1 초과면 상한 0.92 -> 1.0)")
     parser.add_argument("--dot-size-gain", type=float, default=1.0, help="점 반지름 배율")
     parser.add_argument("--scatter-start", type=float, default=1.0, help="첫 프레임의 흩어짐 배율 (1 = 승인된 V37)")
@@ -1430,7 +1518,6 @@ def main():
 
     script_dir = Path(__file__).resolve().parent
     density_data = load_density_map(script_dir)
-    dot_rgb = hex_to_rgb01(settings["dot"])
     rings = build_rings(settings["seed"])
     bg_frame, used_fallback = build_background(settings)
 
@@ -1459,6 +1546,7 @@ def main():
     try:
         span = frame_end - frame_start
         for i in range(frame_start, frame_end):
+            dot_rgb = dot_rgb_at(settings, dot_mix_at(settings, i, total_frames, settings["fps"]))
             dots_bgra = render_dot_layer(i, settings["fps"], rings, density_data, dot_rgb, settings["dot_opaque"],
                                          settings["dot_alpha_gain"], settings["dot_size_gain"],
                                          scatter_gain_at(settings, i, total_frames),
@@ -1468,12 +1556,7 @@ def main():
                                          dust_at(settings, i, total_frames),
                                          far_history(settings, i, total_frames, settings["fps"]),
                                          settings["dust_speed"])
-            if transparent:
-                frame = unpremultiply_bgra(dots_bgra)
-                if settings["dark_alpha"]:
-                    frame[:, :, 3] = _DARK_ALPHA_LUT[frame[:, :, 3]]
-            else:
-                frame = composite_premult_bgra_over_bgr(dots_bgra, bg_frame)
+            frame = finish_frame(settings, dots_bgra, bg_frame, dot_rgb)
             proc.stdin.write(frame.tobytes())
 
             now = time.time()
