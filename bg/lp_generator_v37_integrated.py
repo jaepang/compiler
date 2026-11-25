@@ -293,9 +293,12 @@ def far_ring_weight(rr: float) -> float:
 
 # Dust: detached dots drifting around the whole area outside the LP (--dust-start/--dust-end).
 DUST_MAX = 8000
-DUST_INNER_R = OUTER_R + 6.0   # from the LP rim outward, never over the record
+DUST_INNER_R = OUTER_R - 30.0   # dust fades in from here (alpha 0) over DUST_EDGE, past the last full LP ring
+DUST_EDGE = 40.0
+DUST_RIM_BOOST = 0.8    # extra alpha at the rim, fading out over DUST_RIM_FALL px, to fill the
+DUST_RIM_FALL = 300.0   # zone where the shed fragments are still sparse and pale
 DUST_OUTER_R = math.hypot(RENDER_W, RENDER_H) / 2.0 + 40.0
-DUST_R_POW = 2.2
+DUST_R_SCALE = 160.0
 DUST_SPEED_MEDIAN = 0.85   # median of the per-dot speed jitter below
 
 
@@ -416,9 +419,11 @@ def build_rings(seed: int):
 def build_dust(seed: int):
     rng = np.random.default_rng([seed, 2])
     n = DUST_MAX
-    # Radii biased toward the rim so the dust thins out toward the screen corners.
+    # Radii exponentially biased toward the rim (scale DUST_R_SCALE) so the dust thins out toward
+    # the screen corners without piling up right at the rim.
     u = rng.random(n)
-    r0 = DUST_INNER_R + (DUST_OUTER_R - DUST_INNER_R) * u ** DUST_R_POW
+    span = DUST_OUTER_R - DUST_INNER_R
+    r0 = DUST_INNER_R - DUST_R_SCALE * np.log1p(-u * (1.0 - math.exp(-span / DUST_R_SCALE)))
     return {
         "dust": True,
         "order": rng.permutation(n).astype(np.float32) / n,  # reveal order
@@ -448,7 +453,7 @@ def draw_dust(ctx, dust, count: float, t_sec: float, spin_sec: float, dot_rgb, o
     cx, cy = RENDER_W / 2.0, RENDER_H / 2.0
     r0 = dust["r0"][on]
     r = r0 + dust["r_amp"][on] * np.sin(2 * np.pi * t_sec / dust["r_period"][on] + dust["r_phase"][on])
-    r = np.maximum(r, DUST_INNER_R)
+    r = DUST_INNER_R + np.abs(r - DUST_INNER_R)   # bounce off the inner edge (no pile-up ring)
     # Same clockwise direction as the LP, at about the LP rim's linear speed (px/s) at every radius
     # times speed_gain, so the dust does not look faster than the record; follows the spin ramp.
     omega = (np.deg2rad(MAIN_SPEED_BASE) * speed_gain * dust["speed"][on] / DUST_SPEED_MEDIAN
@@ -458,7 +463,9 @@ def draw_dust(ctx, dust, count: float, t_sec: float, spin_sec: float, dot_rgb, o
     x = cx + r * np.cos(a)
     y = cy + r * np.sin(a)
     twinkle = 0.75 + 0.25 * np.sin(2 * np.pi * t_sec / dust["tw_period"][on] + dust["tw_phase"][on])
-    alpha = dust["alpha"][on] * twinkle * reveal[on]
+    rim = 1.0 - smoothstep01((r - DUST_INNER_R) / DUST_RIM_FALL)
+    alpha = (dust["alpha"][on] * twinkle * reveal[on]
+             * smoothstep01((r - DUST_INNER_R) / DUST_EDGE) * (1.0 + DUST_RIM_BOOST * rim))
     for px, py, radius, al in zip(x, y, dust["radius"][on], alpha):
         if px < -10 or px > RENDER_W + 10 or py < -10 or py > RENDER_H + 10 or al < 0.010:
             continue
