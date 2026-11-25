@@ -211,6 +211,11 @@ def scatter_gain_at(settings, frame_index: int, total_frames: int) -> float:
                    frame_index, total_frames)
 
 
+def escape_at(settings, frame_index: int, total_frames: int) -> float:
+    return ramp_at(settings["escape_start"], settings["escape_end"], settings["escape_curve"],
+                   frame_index, total_frames)
+
+
 def fill_at(settings, frame_index: int, total_frames: int) -> float:
     return ramp_at(settings["fill_start"], settings["fill_end"], settings["fill_curve"],
                    frame_index, total_frames)
@@ -522,7 +527,7 @@ def build_background(settings: dict) -> tuple[np.ndarray, bool]:
 
 def render_dot_layer(frame_index: int, fps: int, rings, density_data, dot_rgb, opaque: bool = False,
                      alpha_gain: float = 1.0, size_gain: float = 1.0, scatter_gain: float = 1.0,
-                     fill: float = 1.0):
+                     fill: float = 1.0, escape_gain: float = 1.0):
     if cairo is None:
         raise RuntimeError("pycairo가 설치되어 있지 않습니다. pip install pycairo")
 
@@ -594,11 +599,17 @@ def render_dot_layer(frame_index: int, fps: int, rings, density_data, dot_rgb, o
             )
 
             vis_mod = 0.05 * np.sin(2*np.pi*u + 3.0*a_base + 0.012*rr)
-            primary_mask = ring["keep_seed"] < np.clip(base_keep + vis_mod, 0.08, 1.0)
+            primary_keep = np.clip(base_keep + vis_mod, 0.08, 1.0)
 
             outer_falloff = 1.0 - 0.52 * (t ** 1.35)
             outer_falloff *= (0.92 + 0.08 * gloss_anchor)
-            secondary_mask = ring["keep_seed2"] < np.clip(outer_falloff, 0.26, 1.0)
+            secondary_keep = np.clip(outer_falloff, 0.26, 1.0)
+            if escape_gain > 1.0:
+                # More of the shedding dots survive: the dropped share shrinks by escape_gain.
+                primary_keep = 1.0 - (1.0 - primary_keep) / escape_gain
+                secondary_keep = 1.0 - (1.0 - secondary_keep) / escape_gain
+            primary_mask = ring["keep_seed"] < primary_keep
+            secondary_mask = ring["keep_seed2"] < secondary_keep
 
             long_tail_prob = np.clip(
                 0.05
@@ -607,7 +618,7 @@ def render_dot_layer(frame_index: int, fps: int, rings, density_data, dot_rgb, o
                 + BOTTOM_LONGTAIL_BOOST * lower,
                 0.05,
                 0.30,
-            )
+            ) * escape_gain
             long_tail_mask = ring["tail_seed"] < long_tail_prob
             mask = primary_mask & (secondary_mask | long_tail_mask)
 
@@ -736,6 +747,9 @@ def render_dot_layer(frame_index: int, fps: int, rings, density_data, dot_rgb, o
         alpha_values = np.clip(alpha_values, 0.010, 0.92)
         if alpha_gain != 1.0:
             alpha_values = np.clip(alpha_values * alpha_gain, 0.010, 1.0)
+        if escape_gain > 1.0:
+            # Brighten only the shedding dots (frag 0 in the body), up to the usual 0.92 cap.
+            alpha_values = np.minimum(alpha_values * (1.0 + (escape_gain - 1.0) * frag), 0.92)
         if reveal is not None:
             alpha_values = alpha_values * reveal[mask]
 
@@ -823,6 +837,10 @@ def resolve_inputs(args):
         raise ValueError("scatter_start / scatter_end는 0 이상이어야 합니다.")
     if args.scatter_curve not in SCATTER_CURVES:
         raise ValueError("--scatter-curve는 " + " / ".join(SCATTER_CURVES) + " 중 하나여야 합니다.")
+    if args.escape_start < 1 or args.escape_end < 1:
+        raise ValueError("escape_start / escape_end는 1 이상이어야 합니다.")
+    if args.escape_curve not in SCATTER_CURVES:
+        raise ValueError("--escape-curve는 " + " / ".join(SCATTER_CURVES) + " 중 하나여야 합니다.")
     if not (0 <= args.fill_start <= 1 and 0 <= args.fill_end <= 1):
         raise ValueError("fill_start / fill_end는 0~1 범위여야 합니다.")
     if args.fill_curve not in SCATTER_CURVES:
@@ -850,6 +868,9 @@ def resolve_inputs(args):
         "scatter_start": float(args.scatter_start),
         "scatter_end": float(args.scatter_end),
         "scatter_curve": args.scatter_curve,
+        "escape_start": float(args.escape_start),
+        "escape_end": float(args.escape_end),
+        "escape_curve": args.escape_curve,
         "fill_start": float(args.fill_start),
         "fill_end": float(args.fill_end),
         "fill_curve": args.fill_curve,
@@ -959,6 +980,9 @@ def save_settings(settings, output_path: Path, used_fallback: bool):
         "scatter_start": settings["scatter_start"],
         "scatter_end": settings["scatter_end"],
         "scatter_curve": settings["scatter_curve"],
+        "escape_start": settings["escape_start"],
+        "escape_end": settings["escape_end"],
+        "escape_curve": settings["escape_curve"],
         "fill_start": settings["fill_start"],
         "fill_end": settings["fill_end"],
         "fill_curve": settings["fill_curve"],
@@ -1082,6 +1106,8 @@ def print_settings(settings, total_frames, used_fallback):
     print(f"점 배율    : alpha x{settings['dot_alpha_gain']} / size x{settings['dot_size_gain']}")
     if settings["scatter_start"] != 1.0 or settings["scatter_end"] != 1.0:
         print(f"흩어짐     : x{settings['scatter_start']} -> x{settings['scatter_end']} ({settings['scatter_curve']})")
+    if settings["escape_start"] != 1.0 or settings["escape_end"] != 1.0:
+        print(f"빠져나가는 점: x{settings['escape_start']} -> x{settings['escape_end']} ({settings['escape_curve']})")
     if settings["fill_start"] != 1.0 or settings["fill_end"] != 1.0:
         print(f"점 비율    : {settings['fill_start']} -> {settings['fill_end']} ({settings['fill_curve']})")
     if settings["dark_alpha"]:
@@ -1124,6 +1150,10 @@ def main():
     parser.add_argument("--scatter-end", type=float, default=1.0, help="마지막 프레임의 흩어짐 배율")
     parser.add_argument("--scatter-curve", default="linear",
                         help="시작→끝 배율이 바뀌는 모양: linear(일정) / ease-in(처음 느리고 끝에서 빠름) / smooth(양끝 느림)")
+    parser.add_argument("--escape-start", type=float, default=1.0,
+                        help="첫 프레임의 빠져나가는 점 배율 (1 = 승인된 V37). 외곽 파편의 개수와 밝기만 늘리고 LP 본체는 그대로")
+    parser.add_argument("--escape-end", type=float, default=1.0, help="마지막 프레임의 빠져나가는 점 배율")
+    parser.add_argument("--escape-curve", default="linear", help="배율이 바뀌는 모양: linear / ease-in / smooth")
     parser.add_argument("--fill-start", type=float, default=1.0,
                         help="첫 프레임에 보이는 점 비율 0~1 (1 = 승인된 V37, 전부)")
     parser.add_argument("--fill-end", type=float, default=1.0, help="마지막 프레임에 보이는 점 비율 0~1")
@@ -1211,7 +1241,8 @@ def main():
             dots_bgra = render_dot_layer(i, settings["fps"], rings, density_data, dot_rgb, settings["dot_opaque"],
                                          settings["dot_alpha_gain"], settings["dot_size_gain"],
                                          scatter_gain_at(settings, i, total_frames),
-                                         fill_at(settings, i, total_frames))
+                                         fill_at(settings, i, total_frames),
+                                         escape_at(settings, i, total_frames))
             if transparent:
                 frame = unpremultiply_bgra(dots_bgra)
                 if settings["dark_alpha"]:
