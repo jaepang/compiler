@@ -1,9 +1,9 @@
 #!/bin/sh
 # 엔딩 크레딧 롤. 1:24:09:20 에 순수 검정 위로 Fine 이 컷인하고, 그 아래 크레딧과 함께 화면 위로 아주 천천히 올라간다.
 #   credits_roll.png : 가로 1920, 세로는 내용만큼인 투명 PNG. FilmCraft 에서 Motion 위치 키프레임으로 아래→위로 움직인다.
-#                      맨 위 1080 줄 안의 Fine 은 fine_frame.png·fine_frame_d.png 의 Fine 과 같은 자리·크기다
-#                      (Times New Roman Bold Italic 180pt, 1920x1080 한가운데 — side_frames.sh 와 같은 방법).
-#                      그래서 PNG 맨 위를 화면 맨 위(y 0)에 두면 기존 Fine 프레임과 글자가 겹친다.
+#                      Fine 은 fine_frame.png 의 Fine 과 같은 크기(Times New Roman Bold Italic 180pt)이고,
+#                      PNG 맨 위를 화면 맨 위(y 0)에 두었을 때 Fine 과 compiled by: light 두 줄의 잉크가 화면 세로 가운데에 오도록
+#                      FINE_SHIFT 만큼 위로 올렸다(기존 Fine 프레임보다 94px 위).
 # 글씨: 제목 줄은 Times New Roman (Bold Italic / Italic), 곡 줄은 intro_frame.sh 와 같은 Pretendard Light. 모두 흰색.
 # 곡 목록은 ../classification.json 에서 읽고 "아티스트-곡명" 을 "nn 아티스트 - 곡명" 으로 바꾼다.
 # 시퀀스 마커 이름과 다른 두 곡만 RENAME 으로 맞춘다. 18 번 곡 줄 아래에는 보조 줄 두 개(인스트 커버 출처, vocal: light)를 둔다.
@@ -24,7 +24,8 @@ GAP_TRACK=18     # 곡 줄 사이
 GAP_HEAD=30      # 제목과 첫 곡 사이
 GAP_BLOCK=110    # 묶음 사이
 FINE_SIZE=180    # Fine (fine_frame.png 와 같다 — 글씨 잉크는 y 478~604)
-HEAD_H=740       # Fine 칸의 높이. 그 아래에 compiled by 를 붙인다
+FINE_SHIFT=94    # Fine 을 1080 한가운데에서 올리는 양. Fine 잉크 478~603·compiled by 749~790 → 384~696 (가운데 540)
+HEAD_H=$((740 - FINE_SHIFT))  # Fine 칸의 높이. 그 아래에 compiled by 를 붙인다
 INTRO_H=$((1080 - GAP_BLOCK))  # Fine·compiled by 칸의 높이 — 컷인 때 화면에는 이 둘만 보이고 side A 는 화면 바로 아래에서 시작한다
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
@@ -79,7 +80,7 @@ block "side C" 11 14
 block "side D" 15 18
 block "bonus track" 19 19
 magick -size 1920x1080 xc:none -font "$SERIF_BI" -pointsize $FINE_SIZE -fill white \
-  -gravity center -annotate +0+0 Fine -gravity north -crop 1920x$HEAD_H+0+0 +repage "$TMP/head.png"
+  -gravity center -annotate +0-$FINE_SHIFT Fine -gravity north -crop 1920x$HEAD_H+0+0 +repage "$TMP/head.png"
 # shellcheck disable=SC2086
 magick "$TMP/head.png" $credit -background none -gravity north -append -extent 1920x$INTRO_H +repage "$TMP/intro.png"
 # shellcheck disable=SC2086
