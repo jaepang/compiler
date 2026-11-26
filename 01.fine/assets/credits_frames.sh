@@ -1,11 +1,10 @@
 #!/bin/sh
-# 엔딩 크레딧 레이어. 보너스 트랙(19)이 흐르는 동안 Fine(fine_frame_d.png) 아래 칸에서 아주 천천히 올라가는 롤이다.
-#   credits_roll.png  : 가로 1920, 세로는 내용만큼인 투명 PNG. FilmCraft 에서 Motion 위치 키프레임으로 아래→위로 움직인다.
-#   credits_cover.png : fine_frame_d.png 를 그대로 복사하되 Fine 아래 칸(FADE_TOP~FADE_BOT 에서 BOT_FADE 까지)만 투명하게 판 덮개.
-#                       크레딧 위 트랙에 얹으면 크레딧이 Fine 근처에서 서서히 사라지고, 화면 맨 아래에서 서서히 나타난다.
-#                       덮개가 바탕과 같은 픽셀이라 경계가 보이지 않는다.
-# 글씨: 제목 줄은 side_frames.sh·fine_frame 과 같은 Times New Roman (Bold Italic / Italic),
-#       곡 줄은 intro_frame.sh 와 같은 Pretendard Light (한글·영문 모두). 모두 흰색.
+# 엔딩 크레딧 롤. 1:24:09:20 에 순수 검정 위로 Fine 이 컷인하고, 그 아래 크레딧과 함께 화면 위로 아주 천천히 올라간다.
+#   credits_roll.png : 가로 1920, 세로는 내용만큼인 투명 PNG. FilmCraft 에서 Motion 위치 키프레임으로 아래→위로 움직인다.
+#                      맨 위 1080 줄 안의 Fine 은 fine_frame.png·fine_frame_d.png 의 Fine 과 같은 자리·크기다
+#                      (Times New Roman Bold Italic 180pt, 1920x1080 한가운데 — side_frames.sh 와 같은 방법).
+#                      그래서 PNG 맨 위를 화면 맨 위(y 0)에 두면 기존 Fine 프레임과 글자가 겹친다.
+# 글씨: 제목 줄은 Times New Roman (Bold Italic / Italic), 곡 줄은 intro_frame.sh 와 같은 Pretendard Light. 모두 흰색.
 # 곡 목록은 ../classification.json 에서 읽고 "아티스트-곡명" 을 "nn 아티스트 - 곡명" 으로 바꾼다.
 # 시퀀스 마커 이름과 다른 두 곡만 RENAME 으로 맞춘다. 18 번 곡 줄 아래에는 보조 줄 두 개(인스트 커버 출처, vocal: light)를 둔다.
 #
@@ -24,10 +23,9 @@ GAP_NOTE=6       # 곡 줄과 보조 줄 사이
 GAP_TRACK=18     # 곡 줄 사이
 GAP_HEAD=30      # 제목과 첫 곡 사이
 GAP_BLOCK=110    # 묶음 사이
-# 덮개의 투명 칸 (fine_frame_d.png 의 Fine 글씨는 y 478~604)
-FADE_TOP=650     # 여기까지는 덮개가 불투명 — 크레딧이 보이지 않는다
-FADE_BOT=740     # 여기부터 완전히 보인다
-BOT_FADE=1020    # 여기부터 다시 덮개가 짙어져 1080 에서 불투명
+FINE_SIZE=180    # Fine (fine_frame.png 와 같다 — 글씨 잉크는 y 478~604)
+HEAD_H=740       # Fine 칸의 높이. 그 아래에 compiled by 를 붙인다
+INTRO_H=$((1080 - GAP_BLOCK))  # Fine·compiled by 칸의 높이 — 컷인 때 화면에는 이 둘만 보이고 side A 는 화면 바로 아래에서 시작한다
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 
@@ -73,19 +71,18 @@ block() {  # block <제목> <첫 번호> <끝 번호>
 }
 
 add "$SERIF_I" $CREDIT_SIZE "compiled by: light"
+credit=$parts
+parts=""
 block "side A" 1 5
 block "side B" 6 10
 block "side C" 11 14
 block "side D" 15 18
 block "bonus track" 19 19
+magick -size 1920x1080 xc:none -font "$SERIF_BI" -pointsize $FINE_SIZE -fill white \
+  -gravity center -annotate +0+0 Fine -gravity north -crop 1920x$HEAD_H+0+0 +repage "$TMP/head.png"
 # shellcheck disable=SC2086
-magick $parts -background none -gravity center -append -gravity center -extent 1920x +repage "PNG32:credits_roll.png"
+magick "$TMP/head.png" $credit -background none -gravity north -append -extent 1920x$INTRO_H +repage "$TMP/intro.png"
+# shellcheck disable=SC2086
+magick $parts -background none -gravity center -append -gravity center -extent 1920x +repage "$TMP/body.png"
+magick "$TMP/intro.png" "$TMP/body.png" -background none -gravity north -append +repage "PNG32:credits_roll.png"
 echo "credits_roll.png $(magick identify -format '%wx%h' credits_roll.png)"
-
-magick \( -size 1920x$FADE_TOP xc:white \) \
-  \( -size 1920x$((FADE_BOT - FADE_TOP)) gradient:white-black \) \
-  \( -size 1920x$((BOT_FADE - FADE_BOT)) xc:black \) \
-  \( -size 1920x$((1080 - BOT_FADE)) gradient:black-white \) \
-  -append -colorspace gray "$TMP/mask.png"
-magick fine_frame_d.png "$TMP/mask.png" -alpha off -compose CopyOpacity -composite "PNG32:credits_cover.png"
-echo "credits_cover.png $(magick identify -format '%wx%h' credits_cover.png)"
