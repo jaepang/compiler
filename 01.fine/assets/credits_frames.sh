@@ -6,7 +6,7 @@
 #                      FINE_SHIFT 만큼 위로 올렸다(기존 Fine 프레임보다 94px 위).
 # 글씨: 제목 줄은 Times New Roman (Bold Italic / Italic), 곡 줄은 intro_frame.sh 와 같은 Pretendard Light. 모두 흰색.
 # 곡 목록은 ../classification.json 에서 읽고 "아티스트-곡명" 을 "nn 아티스트 - 곡명" 으로 바꾼다.
-# 시퀀스 마커 이름과 다른 두 곡만 RENAME 으로 맞춘다. 18 번 곡 줄 아래에는 보조 줄 두 개(인스트 커버 출처, vocal: light)를 둔다.
+# RENAME 으로 14·18 은 시퀀스 마커 이름에 맞추고, 05 는 라이브 앨범 표기를 붙이고, 06·08 은 한글 제목으로 바꾼다. 18 번 곡 줄 아래에는 보조 줄 두 개(인스트 커버 출처, vocal: light)를 둔다.
 # 맨 밑에는 credits_spiral.png(1672x941 투명 PNG, 썸네일과 같은 흰 점묘 나선)를 GAP_SPIRAL 띄워 가운데에 붙인다.
 #   원본의 보이는 부분(검정 위 합성 밝기 1 이상, x 443~1199 · y 84~883)만 잘라 높이 SPIRAL_H 로 줄인다.
 #   그 밖은 alpha 1~9 의 옅은 번짐뿐이라 검정 위에서 0 으로 사라진다. 롤이 끝나면 나선이 화면 세로 가운데에 홀로 남는다.
@@ -38,7 +38,10 @@ trap 'rm -rf "$TMP"' EXIT
 # 묶음 정의: 제목|첫 번호|끝 번호
 python3 - ../classification.json "$TMP/tracks.txt" <<'PYEOF'
 import json, sys
-RENAME = {  # 시퀀스 마커 이름에 맞춘다
+RENAME = {  # 시퀀스 마커 이름에 맞춘다 (05·06 은 크레딧 표기만 다르다)
+    5: "Goodbye Seoul (AAA Live)",  # 앨범 AAA LIVE 수록 라이브 버전
+    6: "15살",
+    8: "환각 (feat. 사뮈)",
     14: "Stockholm Syndrome (Live From Wembley Stadium)",
     18: "Movie (Shoegaze Inst)",
 }
