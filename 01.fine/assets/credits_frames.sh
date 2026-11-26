@@ -7,8 +7,9 @@
 # 글씨: 제목 줄은 Times New Roman (Bold Italic / Italic), 곡 줄은 intro_frame.sh 와 같은 Pretendard Light. 모두 흰색.
 # 곡 목록은 ../classification.json 에서 읽고 "아티스트-곡명" 을 "nn 아티스트 - 곡명" 으로 바꾼다.
 # RENAME 으로 14 는 시퀀스 마커 이름에 맞추고, 18 은 (Shoegaze) 만 붙이고, 05 는 라이브 앨범 표기를 붙이고, 06·08·16 은 한글 제목으로 바꾼다. 18 번 곡 줄 아래에는 보조 줄 두 개(인스트 커버 출처, vocal: light)를 둔다.
-# 맨 밑에는 credits_spiral.png(1672x941 투명 PNG, 썸네일과 같은 흰 점묘 나선)를 GAP_SPIRAL 띄워 가운데에 붙인다.
-#   원본의 보이는 부분(검정 위 합성 밝기 1 이상, x 443~1199 · y 84~883)만 잘라 높이 SPIRAL_H 로 줄인다.
+# 맨 밑에는 흰 점묘 나선(썸네일과 같은 모티프) credits_spiral_hq.png 를 GAP_SPIRAL 띄워 가운데에 붙인다.
+#   credits_spiral_hq.py 가 credits_spiral_6688.png 에서 만든다(높이 SPIRAL_H, 검정 위 불투명 사각형 — FilmCraft 선형광 합성 대책).
+#   credits_spiral.png 는 같은 그림의 1672x941 판(처음 받은 것)이다.
 #   그 밖은 alpha 1~9 의 옅은 번짐뿐이라 검정 위에서 0 으로 사라진다. 롤이 끝나면 나선이 화면 세로 가운데에 홀로 남는다.
 #
 #   ./credits_frames.sh
@@ -30,7 +31,7 @@ FINE_SIZE=180    # Fine (fine_frame.png 와 같다 — 글씨 잉크는 y 478~60
 FINE_SHIFT=94    # Fine 을 1080 한가운데에서 올리는 양. Fine 잉크 478~603·compiled by 749~790 → 384~696 (가운데 540)
 HEAD_H=$((740 - FINE_SHIFT))  # Fine 칸의 높이. 그 아래에 compiled by 를 붙인다
 GAP_SPIRAL=360   # bonus track 곡 줄과 나선 사이 — 롤 끝에 나선이 가운데 오면 bonus 묶음은 화면 위로 막 빠져나가 있다
-SPIRAL_H=620     # 나선 높이 (원본 800px 에서 줄인다 — 업스케일 없음)
+SPIRAL_H=620     # 나선 높이 — credits_spiral_hq.png 의 높이와 같아야 한다
 INTRO_H=$((1080 - GAP_BLOCK))  # Fine·compiled by 칸의 높이 — 컷인 때 화면에는 이 둘만 보이고 side A 는 화면 바로 아래에서 시작한다
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
@@ -96,7 +97,7 @@ magick "$TMP/head.png" $credit -background none -gravity north -append -extent 1
 magick $parts -background none -gravity center -append -gravity center -extent 1920x +repage "$TMP/body.png"
 # 나선은 body 와 따로 붙인다 — body 에 넣으면 -extent 1920x 의 세로 정렬이 바뀌어 위쪽 크레딧이 14px 밀린다
 magick -size 1920x$((GAP_SPIRAL + SPIRAL_H)) xc:none \
-  \( credits_spiral.png -crop 757x800+443+84 +repage -resize x$SPIRAL_H \) \
+  credits_spiral_hq.png \
   -gravity north -geometry +0+$GAP_SPIRAL -composite "$TMP/spiral.png"
 magick "$TMP/intro.png" "$TMP/body.png" "$TMP/spiral.png" -background none -gravity north -append +repage "PNG32:credits_roll.png"
 echo "credits_roll.png $(magick identify -format '%wx%h' credits_roll.png)"
